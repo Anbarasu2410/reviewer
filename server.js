@@ -168,6 +168,33 @@ app.get('/api/file/:repoId/:filePath(*)', async (req, res) => {
   }
 });
 
+// Get full file content (all lines)
+app.get('/api/file-full/:repoId/:filePath(*)', async (req, res) => {
+  try {
+    const { repoId, filePath } = req.params;
+    const repoPath = repoPathMap.get(repoId);
+
+    if (!repoPath) {
+      return res.status(400).json({ error: 'Invalid repository ID' });
+    }
+
+    const fullPath = path.join(repoPath, filePath);
+
+    // Get current file content
+    const content = await fs.readFile(fullPath, 'utf-8');
+    const lines = content.split('\n');
+
+    res.json({
+      filePath,
+      lines
+    });
+
+  } catch (error) {
+    console.error('File read error:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // Submit review
 app.post('/api/submit-review', async (req, res) => {
   try {

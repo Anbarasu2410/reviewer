@@ -56,13 +56,22 @@ function displayFiles(files) {
   const filesList = document.getElementById('filesList');
   const fileCount = document.getElementById('fileCount');
   const submitBtn = document.getElementById('submitReviewBtn');
+  const resizeHandle = document.getElementById('resizeHandle');
 
-  filesList.innerHTML = files.map((file, index) =>
-    `<div class="file-item" onclick="loadFile('${file}', ${index})">${file}</div>`
-  ).join('');
+  filesList.innerHTML = files.map((file, index) => {
+    const parts = file.split('/');
+    const filename = parts[parts.length - 1];
+    const path = parts.slice(0, -1).join('/');
+
+    // Because of RTL, we need to reverse the order in HTML
+    const displayText = path ? `${path}/<span class="filename">${filename}</span>` : `<span class="filename">${filename}</span>`;
+
+    return `<div class="file-item" onclick="loadFile('${file}', ${index})" title="${escapeHtml(file)}">${displayText}</div>`;
+  }).join('');
 
   fileCount.textContent = `${files.length} file${files.length !== 1 ? 's' : ''}`;
   sidebar.classList.remove('hidden');
+  resizeHandle.classList.remove('hidden');
   submitBtn.classList.remove('hidden');
 }
 
@@ -368,6 +377,7 @@ function resetApp() {
 
   document.getElementById('repoPath').value = '';
   document.getElementById('sidebar').classList.add('hidden');
+  document.getElementById('resizeHandle').classList.add('hidden');
   document.getElementById('codeSection').classList.add('hidden');
   document.getElementById('submitReviewBtn').classList.add('hidden');
   document.getElementById('status').textContent = '';
@@ -381,11 +391,88 @@ function showStatus(message, type) {
   statusEl.className = `status ${type}`;
 }
 
+// Show full file context (all lines, not just diff)
+async function showFullContext() {
+  if (!currentRepoId || !currentFile) return;
+
+  try {
+    const response = await fetch(`${API_BASE}/file-full/${currentRepoId}/${currentFile}`);
+    const data = await response.json();
+
+    if (!response.ok) {
+      throw new Error(data.error || 'Failed to load full file content');
+    }
+
+    displayFullContext(data.filePath, data.lines);
+
+  } catch (error) {
+    showStatus(`Error loading full context: ${error.message}`, 'error');
+  }
+}
+
+// Display full file content
+function displayFullContext(filePath, lines) {
+  const codeViewer = document.getElementById('codeViewer');
+
+  let html = '';
+  lines.forEach((line, index) => {
+    const lineNum = index + 1;
+
+    html += `
+      <div class="line diff-unchanged" data-line="${lineNum}">
+        <div class="line-numbers">
+          <span class="old-line-number"></span>
+          <span class="new-line-number">${lineNum}</span>
+        </div>
+        <div class="line-content">${escapeHtml(line) || ' '}</div>
+      </div>
+    `;
+  });
+
+  codeViewer.innerHTML = html;
+  showStatus('Showing full file context', 'success');
+}
+
 // Escape HTML
 function escapeHtml(text) {
   const div = document.createElement('div');
   div.textContent = text;
   return div.innerHTML;
+}
+
+// Sidebar resize functionality
+function initResizeHandle() {
+  const resizeHandle = document.getElementById('resizeHandle');
+  const sidebar = document.getElementById('sidebar');
+  let isResizing = false;
+
+  resizeHandle.addEventListener('mousedown', (e) => {
+    isResizing = true;
+    resizeHandle.classList.add('resizing');
+    document.body.style.cursor = 'col-resize';
+    document.body.style.userSelect = 'none';
+  });
+
+  document.addEventListener('mousemove', (e) => {
+    if (!isResizing) return;
+
+    const newWidth = e.clientX;
+    const minWidth = 200;
+    const maxWidth = 600;
+
+    if (newWidth >= minWidth && newWidth <= maxWidth) {
+      sidebar.style.width = `${newWidth}px`;
+    }
+  });
+
+  document.addEventListener('mouseup', () => {
+    if (isResizing) {
+      isResizing = false;
+      resizeHandle.classList.remove('resizing');
+      document.body.style.cursor = '';
+      document.body.style.userSelect = '';
+    }
+  });
 }
 
 // Allow Enter key to load repo
@@ -395,4 +482,7 @@ document.addEventListener('DOMContentLoaded', () => {
       loadRepo();
     }
   });
+
+  // Initialize resize handle
+  initResizeHandle();
 });

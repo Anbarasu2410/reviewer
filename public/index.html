@@ -34,9 +34,17 @@
       <div id="filesList" class="files-list"></div>
     </aside>
 
+    <div id="resizeHandle" class="resize-handle hidden"></div>
+
     <main id="codeSection" class="code-section hidden">
       <div class="code-header">
         <h2 id="currentFile"></h2>
+        <button class="full-context-btn" onclick="showFullContext()">
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
+            <path d="M1.75 2.5a.25.25 0 00-.25.25v10.5c0 .138.112.25.25.25h12.5a.25.25 0 00.25-.25V2.75a.25.25 0 00-.25-.25H1.75zM0 2.75C0 1.784.784 1 1.75 1h12.5c.966 0 1.75.784 1.75 1.75v10.5A1.75 1.75 0 0114.25 15H1.75A1.75 1.75 0 010 13.25V2.75zm9.22 3.72a.75.75 0 000 1.06L10.69 9 9.22 10.47a.75.75 0 101.06 1.06l2-2a.75.75 0 000-1.06l-2-2a.75.75 0 00-1.06 0zM6.78 6.47a.75.75 0 00-1.06 0l-2 2a.75.75 0 000 1.06l2 2a.75.75 0 001.06-1.06L5.31 9l1.47-1.47a.75.75 0 000-1.06z"></path>
+          </svg>
+          Full Context
+        </button>
       </div>
       <div id="codeViewer" class="code-viewer"></div>
     </main>
