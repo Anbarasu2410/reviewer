@@ -134,10 +134,51 @@ function displayCode(filePath, diffLines) {
 
   codeViewer.innerHTML = html;
   codeSection.classList.remove('hidden');
+
+  // Add text selection handler
+  codeViewer.addEventListener('mouseup', handleTextSelection);
+}
+
+// Handle text selection in code viewer
+function handleTextSelection(e) {
+  const selection = window.getSelection();
+  const selectedText = selection.toString().trim();
+
+  if (!selectedText) {
+    return;
+  }
+
+  // Find the line number where selection ends
+  let targetElement = selection.focusNode;
+
+  // Traverse up to find the line element
+  while (targetElement && !targetElement.classList?.contains('line')) {
+    targetElement = targetElement.parentElement;
+  }
+
+  if (!targetElement) {
+    return;
+  }
+
+  const lineNum = parseInt(targetElement.dataset.line);
+  if (!lineNum) {
+    return;
+  }
+
+  // Clear selection
+  selection.removeAllRanges();
+
+  // Show comment input with selected text
+  toggleCommentInputWithSelection(lineNum, selectedText);
 }
 
 // Toggle comment input
 function toggleCommentInput(lineNum) {
+  toggleCommentInputWithSelection(lineNum, null);
+}
+
+// Toggle comment input with optional selected text
+function toggleCommentInputWithSelection(lineNum, selectedText = null) {
   const existing = document.querySelector('.comment-input-box');
   if (existing) {
     existing.remove();
@@ -151,10 +192,20 @@ function toggleCommentInput(lineNum) {
   const lineEl = document.querySelector(`.line[data-line="${lineNum}"]`);
   const inputBox = document.createElement('div');
   inputBox.className = 'comment-input-box';
+
+  // Show selected text if available
+  const selectedTextHtml = selectedText
+    ? `<div class="selected-text-preview">
+         <strong>Selected code:</strong>
+         <pre>${escapeHtml(selectedText)}</pre>
+       </div>`
+    : '';
+
   inputBox.innerHTML = `
+    ${selectedTextHtml}
     <textarea placeholder="Enter your comment (Cmd/Ctrl+Enter to save)..." id="commentInput"></textarea>
     <div class="actions">
-      <button onclick="saveComment(${lineNum})">Save Comment</button>
+      <button onclick="saveComment(${lineNum}, ${selectedText ? `\`${escapeHtml(selectedText).replace(/`/g, '\\`')}\`` : 'null'})">Save Comment</button>
       <button class="cancel-btn" onclick="this.closest('.comment-input-box').remove()">Cancel</button>
     </div>
   `;
@@ -167,13 +218,13 @@ function toggleCommentInput(lineNum) {
   textarea.addEventListener('keydown', (e) => {
     if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
       e.preventDefault();
-      saveComment(lineNum);
+      saveComment(lineNum, selectedText);
     }
   });
 }
 
 // Save comment
-function saveComment(lineNum) {
+function saveComment(lineNum, selectedText = null) {
   const input = document.getElementById('commentInput');
   const text = input.value.trim();
 
@@ -192,6 +243,7 @@ function saveComment(lineNum) {
     file: currentFile,
     line: lineNum,
     lineContent: lineContent,
+    selectedText: selectedText,
     text: text
   });
 

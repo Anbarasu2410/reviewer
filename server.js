@@ -207,6 +207,9 @@ app.post('/api/submit-review', async (req, res) => {
           if (comment.lineContent) {
             reviewContent += `\`\`\`\n${comment.lineContent}\n\`\`\`\n`;
           }
+          if (comment.selectedText) {
+            reviewContent += `**Selected code:**\n\`\`\`\n${comment.selectedText}\n\`\`\`\n`;
+          }
           reviewContent += `${comment.text}\n\n`;
         });
     }
