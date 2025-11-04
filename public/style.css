@@ -355,12 +355,21 @@ button:disabled {
 }
 
 .new-line-number {
-  cursor: pointer;
   border-left: 1px solid #e1e4e8;
 }
 
-.new-line-number:hover {
+.new-line-number:hover,
+.old-line-number:hover {
   color: #0366d6;
+}
+
+.diff-delete .old-line-number {
+  cursor: pointer;
+}
+
+.diff-add .new-line-number,
+.diff-unchanged .new-line-number {
+  cursor: pointer;
 }
 
 .diff-add .old-line-number {

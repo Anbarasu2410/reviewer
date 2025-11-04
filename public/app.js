@@ -122,18 +122,25 @@ function displayCode(filePath, diffLines) {
 
   let html = '';
   diffLines.forEach((diffLine, index) => {
-    // Use newLine for added/unchanged, oldLine for deleted
-    const lineNum = diffLine.newLine || diffLine.oldLine;
-    const hasComment = fileComments.find(c => c.line === lineNum);
+    // Use diffLineIndex to uniquely identify each line in the diff
+    const diffLineIndex = index;
+    const hasComment = fileComments.find(c => c.diffLineIndex === diffLineIndex);
 
     const lineClass = `line diff-${diffLine.type} ${hasComment ? 'commented' : ''}`;
 
+    // Use the appropriate line number for clicking (newLine for add/unchanged, oldLine for delete)
+    const clickableLineNum = diffLine.newLine || diffLine.oldLine;
+
+    // Make both old and new line numbers clickable
+    const oldLineClick = diffLine.type === 'delete' ? `onclick="toggleCommentInput(${diffLineIndex})"` : '';
+    const newLineClick = diffLine.type !== 'delete' ? `onclick="toggleCommentInput(${diffLineIndex})"` : '';
+
     html += `
-      <div class="${lineClass}" data-line="${lineNum}">
+      <div class="${lineClass}" data-diff-index="${diffLineIndex}">
         ${hasComment ? '<span class="comment-indicator"></span>' : ''}
         <div class="line-numbers">
-          <span class="old-line-number">${diffLine.oldLine || ''}</span>
-          <span class="new-line-number" onclick="toggleCommentInput(${lineNum})">${diffLine.newLine || ''}</span>
+          <span class="old-line-number" ${oldLineClick}>${diffLine.oldLine || ''}</span>
+          <span class="new-line-number" ${newLineClick}>${diffLine.newLine || ''}</span>
         </div>
         <div class="line-content">${escapeHtml(diffLine.content) || ' '}</div>
       </div>
@@ -145,8 +152,8 @@ function displayCode(filePath, diffLines) {
         <div class="comment-box">
           <span class="comment-text">${escapeHtml(hasComment.text)}</span>
           <div class="comment-actions">
-            <button class="comment-edit" onclick="editComment(${lineNum}, ${selectedTextAttr})">Edit</button>
-            <button class="comment-delete" onclick="deleteComment(${lineNum})">Delete</button>
+            <button class="comment-edit" onclick="editComment(${diffLineIndex}, ${selectedTextAttr})">Edit</button>
+            <button class="comment-delete" onclick="deleteComment(${diffLineIndex})">Delete</button>
           </div>
         </div>
       `;
@@ -190,7 +197,7 @@ function handleTextSelection(e) {
   // Reset command key tracking
   commandKeyPressed = false;
 
-  // Find the line number where selection ends
+  // Find the line element where selection ends
   let targetElement = selection.focusNode;
 
   // Traverse up to find the line element
@@ -202,8 +209,8 @@ function handleTextSelection(e) {
     return;
   }
 
-  const lineNum = parseInt(targetElement.dataset.line);
-  if (!lineNum) {
+  const diffLineIndex = parseInt(targetElement.dataset.diffIndex);
+  if (diffLineIndex === undefined || isNaN(diffLineIndex)) {
     return;
   }
 
@@ -211,27 +218,27 @@ function handleTextSelection(e) {
   selection.removeAllRanges();
 
   // Show comment input with selected text
-  toggleCommentInputWithSelection(lineNum, selectedText);
+  toggleCommentInputWithSelection(diffLineIndex, selectedText);
 }
 
 // Toggle comment input
-function toggleCommentInput(lineNum) {
-  toggleCommentInputWithSelection(lineNum, null);
+function toggleCommentInput(diffLineIndex) {
+  toggleCommentInputWithSelection(diffLineIndex, null);
 }
 
 // Toggle comment input with optional selected text
-function toggleCommentInputWithSelection(lineNum, selectedText = null) {
+function toggleCommentInputWithSelection(diffLineIndex, selectedText = null) {
   const existing = document.querySelector('.comment-input-box');
   if (existing) {
     existing.remove();
   }
 
   // Check if comment already exists
-  if (comments.find(c => c.file === currentFile && c.line === lineNum)) {
+  if (comments.find(c => c.file === currentFile && c.diffLineIndex === diffLineIndex)) {
     return;
   }
 
-  const lineEl = document.querySelector(`.line[data-line="${lineNum}"]`);
+  const lineEl = document.querySelector(`.line[data-diff-index="${diffLineIndex}"]`);
   const inputBox = document.createElement('div');
   inputBox.className = 'comment-input-box';
 
@@ -247,7 +254,7 @@ function toggleCommentInputWithSelection(lineNum, selectedText = null) {
     ${selectedTextHtml}
     <textarea placeholder="Enter your comment (Cmd/Ctrl+Enter to save)..." id="commentInput"></textarea>
     <div class="actions">
-      <button onclick="saveComment(${lineNum}, ${selectedText ? `\`${escapeHtml(selectedText).replace(/`/g, '\\`')}\`` : 'null'})">Save Comment</button>
+      <button onclick="saveComment(${diffLineIndex}, ${selectedText ? `\`${escapeHtml(selectedText).replace(/`/g, '\\`')}\`` : 'null'})">Save Comment</button>
       <button class="cancel-btn" onclick="this.closest('.comment-input-box').remove()">Cancel</button>
     </div>
   `;
@@ -270,7 +277,7 @@ function toggleCommentInputWithSelection(lineNum, selectedText = null) {
     // Cmd/Ctrl+Enter to save
     if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
       e.preventDefault();
-      saveComment(lineNum, selectedText);
+      saveComment(diffLineIndex, selectedText);
     }
     // Escape to close
     if (e.key === 'Escape') {
@@ -281,7 +288,7 @@ function toggleCommentInputWithSelection(lineNum, selectedText = null) {
 }
 
 // Save comment
-function saveComment(lineNum, selectedText = null) {
+function saveComment(diffLineIndex, selectedText = null) {
   const input = document.getElementById('commentInput');
   const text = input.value.trim();
 
@@ -290,14 +297,16 @@ function saveComment(lineNum, selectedText = null) {
     return;
   }
 
-  // Find the line content from currentDiffLines
-  const diffLine = currentDiffLines.find(dl =>
-    (dl.newLine === lineNum) || (dl.oldLine === lineNum)
-  );
-  const lineContent = diffLine ? diffLine.content : '';
+  // Find the diff line
+  const diffLine = currentDiffLines[diffLineIndex];
+  if (!diffLine) return;
+
+  const lineContent = diffLine.content || '';
+  const lineNum = diffLine.newLine || diffLine.oldLine;
 
   comments.push({
     file: currentFile,
+    diffLineIndex: diffLineIndex,
     line: lineNum,
     lineContent: lineContent,
     selectedText: selectedText,
@@ -310,18 +319,18 @@ function saveComment(lineNum, selectedText = null) {
 }
 
 // Edit comment
-function editComment(lineNum, selectedText = null) {
-  const comment = comments.find(c => c.file === currentFile && c.line === lineNum);
+function editComment(diffLineIndex, selectedText = null) {
+  const comment = comments.find(c => c.file === currentFile && c.diffLineIndex === diffLineIndex);
   if (!comment) return;
 
   // Remove the comment from the list temporarily
-  comments = comments.filter(c => !(c.file === currentFile && c.line === lineNum));
+  comments = comments.filter(c => !(c.file === currentFile && c.diffLineIndex === diffLineIndex));
 
   // Reload file and show edit input
   const fileIndex = currentFiles.findIndex(f => f.path === currentFile);
   loadFile(currentFile, fileIndex).then(() => {
     // Show comment input with existing text
-    const lineEl = document.querySelector(`.line[data-line="${lineNum}"]`);
+    const lineEl = document.querySelector(`.line[data-diff-index="${diffLineIndex}"]`);
     if (!lineEl) return;
 
     const inputBox = document.createElement('div');
@@ -338,7 +347,7 @@ function editComment(lineNum, selectedText = null) {
       ${selectedTextHtml}
       <textarea placeholder="Enter your comment (Cmd/Ctrl+Enter to save)..." id="commentInput">${escapeHtml(comment.text)}</textarea>
       <div class="actions">
-        <button onclick="saveComment(${lineNum}, ${selectedText ? `\`${escapeHtml(selectedText).replace(/`/g, '\\`')}\`` : 'null'})">Save Comment</button>
+        <button onclick="saveComment(${diffLineIndex}, ${selectedText ? `\`${escapeHtml(selectedText).replace(/`/g, '\\`')}\`` : 'null'})">Save Comment</button>
         <button class="cancel-btn" onclick="this.closest('.comment-input-box').remove()">Cancel</button>
       </div>
     `;
@@ -361,7 +370,7 @@ function editComment(lineNum, selectedText = null) {
     textarea.addEventListener('keydown', (e) => {
       if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
         e.preventDefault();
-        saveComment(lineNum, selectedText);
+        saveComment(diffLineIndex, selectedText);
       }
       if (e.key === 'Escape') {
         e.preventDefault();
@@ -376,8 +385,8 @@ function editComment(lineNum, selectedText = null) {
 }
 
 // Delete comment
-function deleteComment(lineNum) {
-  comments = comments.filter(c => !(c.file === currentFile && c.line === lineNum));
+function deleteComment(diffLineIndex) {
+  comments = comments.filter(c => !(c.file === currentFile && c.diffLineIndex === diffLineIndex));
 
   // Reload the current file to remove the comment
   const fileIndex = currentFiles.findIndex(f => f.path === currentFile);
@@ -524,26 +533,108 @@ async function showFullContext() {
   }
 }
 
-// Display full file content
+// Display full file content with deleted lines
 function displayFullContext(filePath, lines) {
   const codeViewer = document.getElementById('codeViewer');
+  const fileComments = comments.filter(c => c.file === filePath);
 
+  // Create a merged view: currentDiffLines + missing lines from full content
+  const mergedLines = [];
+  const coveredNewLines = new Set();
+
+  // First, add all diff lines (includes deleted, added, and changed lines)
+  let lastNewLine = 0;
+  currentDiffLines.forEach(diffLine => {
+    // Check if we need to fill in any missing lines before this diffLine
+    if (diffLine.newLine && diffLine.newLine > lastNewLine + 1) {
+      // Fill in the gap with unchanged lines
+      for (let i = lastNewLine + 1; i < diffLine.newLine; i++) {
+        if (lines[i - 1] !== undefined) {
+          mergedLines.push({
+            oldLine: i,
+            newLine: i,
+            type: 'unchanged',
+            content: lines[i - 1]
+          });
+          coveredNewLines.add(i);
+        }
+      }
+    }
+
+    mergedLines.push(diffLine);
+    if (diffLine.newLine) {
+      coveredNewLines.add(diffLine.newLine);
+      lastNewLine = diffLine.newLine;
+    }
+  });
+
+  // Add any remaining lines after the last diff
+  for (let i = lastNewLine + 1; i <= lines.length; i++) {
+    if (!coveredNewLines.has(i) && lines[i - 1] !== undefined) {
+      mergedLines.push({
+        oldLine: i,
+        newLine: i,
+        type: 'unchanged',
+        content: lines[i - 1]
+      });
+    }
+  }
+
+  // Find matching diffLineIndex for comments in full context
+  // Need to map mergedLines back to original diffLines indices
+  const mergedToDiffIndexMap = new Map();
+  mergedLines.forEach((mergedLine, mergedIndex) => {
+    // Find this line in original diffLines
+    const diffIndex = currentDiffLines.findIndex(dl =>
+      (dl.newLine === mergedLine.newLine && dl.oldLine === mergedLine.oldLine && dl.content === mergedLine.content)
+    );
+    if (diffIndex !== -1) {
+      mergedToDiffIndexMap.set(mergedIndex, diffIndex);
+    }
+  });
+
+  // Now render the merged lines
   let html = '';
-  lines.forEach((line, index) => {
-    const lineNum = index + 1;
+  mergedLines.forEach((diffLine, mergedIndex) => {
+    const diffLineIndex = mergedToDiffIndexMap.get(mergedIndex);
+    const hasComment = diffLineIndex !== undefined ? fileComments.find(c => c.diffLineIndex === diffLineIndex) : null;
+
+    const lineClass = `line diff-${diffLine.type} ${hasComment ? 'commented' : ''}`;
+    const dataDiffIndexAttr = diffLineIndex !== undefined ? `data-diff-index="${diffLineIndex}"` : '';
 
     html += `
-      <div class="line diff-unchanged" data-line="${lineNum}">
+      <div class="${lineClass}" ${dataDiffIndexAttr}>
+        ${hasComment ? '<span class="comment-indicator"></span>' : ''}
         <div class="line-numbers">
-          <span class="old-line-number"></span>
-          <span class="new-line-number">${lineNum}</span>
+          <span class="old-line-number">${diffLine.oldLine || ''}</span>
+          <span class="new-line-number" ${diffLineIndex !== undefined ? `onclick="toggleCommentInput(${diffLineIndex})"` : ''}>${diffLine.newLine || ''}</span>
         </div>
-        <div class="line-content">${escapeHtml(line) || ' '}</div>
+        <div class="line-content">${escapeHtml(diffLine.content) || ' '}</div>
       </div>
     `;
+
+    if (hasComment) {
+      const selectedTextAttr = hasComment.selectedText ? `'${escapeHtml(hasComment.selectedText).replace(/'/g, "\\'")}'` : 'null';
+      html += `
+        <div class="comment-box">
+          <span class="comment-text">${escapeHtml(hasComment.text)}</span>
+          <div class="comment-actions">
+            <button class="comment-edit" onclick="editComment(${diffLineIndex}, ${selectedTextAttr})">Edit</button>
+            <button class="comment-delete" onclick="deleteComment(${diffLineIndex})">Delete</button>
+          </div>
+        </div>
+      `;
+    }
   });
 
   codeViewer.innerHTML = html;
+
+  // Add text selection handler for full context too
+  codeViewer.removeEventListener('mousedown', trackShiftKeyDown);
+  codeViewer.removeEventListener('mouseup', handleTextSelection);
+  codeViewer.addEventListener('mousedown', trackShiftKeyDown);
+  codeViewer.addEventListener('mouseup', handleTextSelection);
+
   showStatus('Showing full file context', 'success');
 }
 
