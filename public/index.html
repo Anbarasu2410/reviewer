@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Code Reviewer</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header class="app-header">
+    <div class="header-content">
+      <h1>Code Reviewer</h1>
+      <div class="header-actions">
+        <input
+          type="text"
+          id="repoPath"
+          placeholder="Enter local repository path..."
+          value="">
+        <button id="loadBtn" onclick="loadRepo()">Load Repository</button>
+        <button id="submitReviewBtn" onclick="submitReview()" class="submit-btn hidden">
+          Submit Review
+        </button>
+      </div>
+    </div>
+    <div id="status" class="status"></div>
+  </header>
+
+  <div class="main-container">
+    <aside id="sidebar" class="sidebar hidden">
+      <div class="sidebar-header">
+        <h2>Changed Files</h2>
+        <span id="fileCount" class="file-count"></span>
+      </div>
+      <div id="filesList" class="files-list"></div>
+    </aside>
+
+    <main id="codeSection" class="code-section hidden">
+      <div class="code-header">
+        <h2 id="currentFile"></h2>
+      </div>
+      <div id="codeViewer" class="code-viewer"></div>
+    </main>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>

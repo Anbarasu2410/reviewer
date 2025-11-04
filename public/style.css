@@ -1,0 +1,369 @@
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+  background: #f5f7fa;
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.hidden {
+  display: none !important;
+}
+
+/* Header */
+.app-header {
+  background: white;
+  border-bottom: 1px solid #e1e4e8;
+  padding: 16px 24px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+}
+
+.header-content {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  max-width: 100%;
+}
+
+.app-header h1 {
+  font-size: 20px;
+  font-weight: 600;
+  color: #24292e;
+  margin: 0;
+  white-space: nowrap;
+  margin-right: 24px;
+}
+
+.header-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex: 1;
+  max-width: 800px;
+}
+
+#repoPath {
+  flex: 1;
+  padding: 8px 12px;
+  font-size: 14px;
+  border: 1px solid #d1d5da;
+  border-radius: 6px;
+  background: #fafbfc;
+  transition: all 0.2s;
+}
+
+#repoPath:focus {
+  outline: none;
+  border-color: #0366d6;
+  background: white;
+  box-shadow: 0 0 0 3px rgba(3, 102, 214, 0.1);
+}
+
+button {
+  padding: 8px 16px;
+  font-size: 14px;
+  font-weight: 500;
+  background: #0366d6;
+  color: white;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.2s;
+  white-space: nowrap;
+}
+
+button:hover {
+  background: #0256c5;
+}
+
+button:active {
+  transform: scale(0.98);
+}
+
+button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.submit-btn {
+  background: #28a745;
+}
+
+.submit-btn:hover {
+  background: #239239;
+}
+
+.status {
+  margin-top: 8px;
+  padding: 8px 12px;
+  border-radius: 6px;
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.status.success {
+  background: #d4edda;
+  color: #155724;
+  border-left: 3px solid #28a745;
+}
+
+.status.error {
+  background: #f8d7da;
+  color: #721c24;
+  border-left: 3px solid #dc3545;
+}
+
+.status.loading {
+  background: #d1ecf1;
+  color: #0c5460;
+  border-left: 3px solid #17a2b8;
+}
+
+/* Main Container */
+.main-container {
+  display: flex;
+  flex: 1;
+  overflow: hidden;
+}
+
+/* Sidebar */
+.sidebar {
+  width: 320px;
+  background: white;
+  border-right: 1px solid #e1e4e8;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.sidebar-header {
+  padding: 16px 20px;
+  border-bottom: 1px solid #e1e4e8;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.sidebar-header h2 {
+  font-size: 16px;
+  font-weight: 600;
+  color: #24292e;
+}
+
+.file-count {
+  font-size: 12px;
+  color: #586069;
+  background: #f1f8ff;
+  padding: 4px 8px;
+  border-radius: 12px;
+}
+
+.files-list {
+  flex: 1;
+  overflow-y: auto;
+  padding: 8px;
+}
+
+.file-item {
+  padding: 10px 12px;
+  margin-bottom: 4px;
+  background: #fafbfc;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.2s;
+  font-size: 13px;
+  color: #24292e;
+  border-left: 3px solid transparent;
+  word-break: break-all;
+}
+
+.file-item:hover {
+  background: #f3f4f6;
+  border-left-color: #0366d6;
+}
+
+.file-item.active {
+  background: #f1f8ff;
+  border-left-color: #0366d6;
+  color: #0366d6;
+  font-weight: 500;
+}
+
+/* Code Section */
+.code-section {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background: #fafbfc;
+}
+
+.code-header {
+  padding: 16px 24px;
+  background: white;
+  border-bottom: 1px solid #e1e4e8;
+}
+
+.code-header h2 {
+  font-size: 14px;
+  font-weight: 600;
+  color: #24292e;
+  font-family: 'Monaco', 'Courier New', monospace;
+}
+
+.code-viewer {
+  flex: 1;
+  overflow-y: auto;
+  background: #ffffff;
+}
+
+.line {
+  display: flex;
+  align-items: flex-start;
+  transition: background 0.1s;
+  position: relative;
+  border-left: 3px solid transparent;
+}
+
+.line:hover {
+  background: #f6f8fa;
+}
+
+.line-number {
+  width: 60px;
+  text-align: right;
+  padding: 4px 12px;
+  color: #959da5;
+  user-select: none;
+  cursor: pointer;
+  font-family: 'Monaco', 'Courier New', monospace;
+  font-size: 12px;
+  flex-shrink: 0;
+  background: #fafbfc;
+  border-right: 1px solid #e1e4e8;
+}
+
+.line-number:hover {
+  color: #0366d6;
+}
+
+.line-content {
+  flex: 1;
+  padding: 4px 16px;
+  color: #24292e;
+  font-family: 'Monaco', 'Courier New', monospace;
+  font-size: 12px;
+  white-space: pre;
+  overflow-x: auto;
+}
+
+.line.commented {
+  background: #fffbdd;
+  border-left-color: #f9c513;
+}
+
+.comment-indicator {
+  position: absolute;
+  left: 0;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 6px;
+  height: 6px;
+  background: #f9c513;
+  border-radius: 50%;
+}
+
+.comment-box {
+  background: #fffbdd;
+  padding: 12px 16px;
+  margin: 0 60px 0 63px;
+  border-left: 3px solid #f9c513;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  border-radius: 0 0 4px 4px;
+}
+
+.comment-text {
+  color: #735c0f;
+  font-size: 13px;
+  flex: 1;
+}
+
+.comment-delete {
+  background: #dc3545;
+  padding: 4px 12px;
+  font-size: 12px;
+  margin-left: 12px;
+}
+
+.comment-input-box {
+  margin: 0 60px 0 63px;
+  padding: 12px;
+  background: #f6f8fa;
+  border-left: 3px solid #0366d6;
+  border-radius: 0 0 4px 4px;
+}
+
+.comment-input-box textarea {
+  width: 100%;
+  padding: 8px 12px;
+  border: 1px solid #d1d5da;
+  border-radius: 4px;
+  font-family: inherit;
+  font-size: 13px;
+  resize: vertical;
+  min-height: 60px;
+  background: white;
+}
+
+.comment-input-box textarea:focus {
+  outline: none;
+  border-color: #0366d6;
+  box-shadow: 0 0 0 3px rgba(3, 102, 214, 0.1);
+}
+
+.comment-input-box .actions {
+  margin-top: 8px;
+  display: flex;
+  gap: 8px;
+}
+
+.comment-input-box button {
+  padding: 6px 14px;
+  font-size: 13px;
+}
+
+.cancel-btn {
+  background: #6c757d;
+}
+
+.cancel-btn:hover {
+  background: #5a6268;
+}
+
+/* Scrollbar styling */
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+::-webkit-scrollbar-track {
+  background: #f1f1f1;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #c1c1c1;
+  border-radius: 5px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #a8a8a8;
+}
