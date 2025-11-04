@@ -3,6 +3,7 @@ const API_BASE = 'http://localhost:4500/api';
 let currentRepoId = null;
 let currentFiles = [];
 let currentFile = null;
+let currentDiffLines = [];
 let comments = [];
 
 // Load local repository
@@ -98,6 +99,7 @@ function displayCode(filePath, diffLines) {
   const codeViewer = document.getElementById('codeViewer');
 
   currentFileEl.textContent = filePath;
+  currentDiffLines = diffLines; // Store for reference when adding comments
 
   const fileComments = comments.filter(c => c.file === filePath);
 
@@ -150,7 +152,7 @@ function toggleCommentInput(lineNum) {
   const inputBox = document.createElement('div');
   inputBox.className = 'comment-input-box';
   inputBox.innerHTML = `
-    <textarea placeholder="Enter your comment..." id="commentInput"></textarea>
+    <textarea placeholder="Enter your comment (Cmd/Ctrl+Enter to save)..." id="commentInput"></textarea>
     <div class="actions">
       <button onclick="saveComment(${lineNum})">Save Comment</button>
       <button class="cancel-btn" onclick="this.closest('.comment-input-box').remove()">Cancel</button>
@@ -158,7 +160,16 @@ function toggleCommentInput(lineNum) {
   `;
 
   lineEl.after(inputBox);
-  document.getElementById('commentInput').focus();
+  const textarea = document.getElementById('commentInput');
+  textarea.focus();
+
+  // Add keyboard shortcut for Cmd+Enter or Ctrl+Enter
+  textarea.addEventListener('keydown', (e) => {
+    if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
+      e.preventDefault();
+      saveComment(lineNum);
+    }
+  });
 }
 
 // Save comment
@@ -167,13 +178,20 @@ function saveComment(lineNum) {
   const text = input.value.trim();
 
   if (!text) {
-    alert('Please enter a comment');
+    showStatus('Please enter a comment', 'error');
     return;
   }
+
+  // Find the line content from currentDiffLines
+  const diffLine = currentDiffLines.find(dl =>
+    (dl.newLine === lineNum) || (dl.oldLine === lineNum)
+  );
+  const lineContent = diffLine ? diffLine.content : '';
 
   comments.push({
     file: currentFile,
     line: lineNum,
+    lineContent: lineContent,
     text: text
   });
 
@@ -214,10 +232,61 @@ async function submitReview() {
       throw new Error(data.error || 'Failed to submit review');
     }
 
-    showStatus(`Review submitted successfully! ${data.totalComments} comments saved to review_this.txt`, 'success');
+    showReviewModal(data.reviewContent, data.filename);
+    showStatus(`Review submitted successfully! ${data.totalComments} comments`, 'success');
 
   } catch (error) {
     showStatus(`Error: ${error.message}`, 'error');
+  }
+}
+
+// Show review modal with download and copy options
+function showReviewModal(reviewContent, filename) {
+  // Create modal overlay
+  const modal = document.createElement('div');
+  modal.className = 'review-modal';
+  modal.innerHTML = `
+    <div class="review-modal-content">
+      <div class="review-modal-header">
+        <h2>Review Submitted</h2>
+        <button class="close-modal" onclick="this.closest('.review-modal').remove()">×</button>
+      </div>
+      <div class="review-modal-body">
+        <pre class="review-text">${escapeHtml(reviewContent)}</pre>
+      </div>
+      <div class="review-modal-footer">
+        <button onclick="downloadReview('${filename}', this.closest('.review-modal').querySelector('.review-text').textContent)">
+          Download ${filename}
+        </button>
+        <button onclick="copyReviewToClipboard(this.closest('.review-modal').querySelector('.review-text').textContent)">
+          Copy to Clipboard
+        </button>
+      </div>
+    </div>
+  `;
+
+  document.body.appendChild(modal);
+}
+
+// Download review as file
+function downloadReview(filename, content) {
+  const blob = new Blob([content], { type: 'text/plain' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  a.click();
+  URL.revokeObjectURL(url);
+  showStatus('Review downloaded successfully', 'success');
+}
+
+// Copy review to clipboard
+async function copyReviewToClipboard(content) {
+  try {
+    await navigator.clipboard.writeText(content);
+    showStatus('Review copied to clipboard!', 'success');
+  } catch (error) {
+    showStatus('Failed to copy to clipboard', 'error');
   }
 }
 
