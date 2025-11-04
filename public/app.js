@@ -86,14 +86,18 @@ async function loadFile(filePath, index) {
   if (!currentRepoId) return Promise.resolve();
 
   currentFile = filePath;
+  currentFileIndex = index; // Track for keyboard navigation
 
   // Reset full context mode when switching files
   isFullContextMode = false;
   storedFullFileLines = null;
 
-  // Update active file highlight
+  // Update active file highlight and scroll into view
   document.querySelectorAll('.file-item').forEach((el, i) => {
     el.classList.toggle('active', i === index);
+    if (i === index) {
+      el.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    }
   });
 
   try {
@@ -501,6 +505,7 @@ function resetApp() {
   currentRepoId = null;
   currentFiles = [];
   currentFile = null;
+  currentFileIndex = -1;
   comments = [];
 
   document.getElementById('repoPath').value = '';
@@ -713,6 +718,31 @@ function initResizeHandle() {
   });
 }
 
+// Track current file index for keyboard navigation
+let currentFileIndex = -1;
+
+// Navigate to next/previous file
+function navigateFiles(direction) {
+  if (currentFiles.length === 0) return;
+
+  let newIndex = currentFileIndex;
+
+  // If no file is loaded yet, load the first file
+  if (currentFileIndex === -1) {
+    newIndex = 0;
+  } else if (direction === 'up') {
+    newIndex = currentFileIndex > 0 ? currentFileIndex - 1 : 0;
+  } else if (direction === 'down') {
+    newIndex = currentFileIndex < currentFiles.length - 1 ? currentFileIndex + 1 : currentFiles.length - 1;
+  }
+
+  if (newIndex !== currentFileIndex) {
+    currentFileIndex = newIndex;
+    const file = currentFiles[newIndex].path;
+    loadFile(file, newIndex);
+  }
+}
+
 // Allow Enter key to load repo
 document.addEventListener('DOMContentLoaded', () => {
   document.getElementById('repoPath').addEventListener('keypress', (e) => {
@@ -723,4 +753,20 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // Initialize resize handle
   initResizeHandle();
+
+  // Add keyboard navigation for files
+  document.addEventListener('keydown', (e) => {
+    // Only handle arrow keys when not in an input/textarea
+    if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') {
+      return;
+    }
+
+    if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      navigateFiles('up');
+    } else if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      navigateFiles('down');
+    }
+  });
 });
