@@ -70,6 +70,71 @@ app.post('/api/load-repo', async (req, res) => {
   }
 });
 
+// Parse unified diff into structured format
+function parseDiff(diffText, currentContent) {
+  const lines = [];
+  const diffLines = diffText.split('\n');
+  const contentLines = currentContent.split('\n');
+
+  let oldLine = 0;
+  let newLine = 0;
+  let inHunk = false;
+
+  for (let i = 0; i < diffLines.length; i++) {
+    const line = diffLines[i];
+
+    // Parse hunk header @@ -old +new @@
+    if (line.startsWith('@@')) {
+      const match = line.match(/@@ -(\d+),?\d* \+(\d+),?\d* @@/);
+      if (match) {
+        oldLine = parseInt(match[1]);
+        newLine = parseInt(match[2]);
+        inHunk = true;
+      }
+      continue;
+    }
+
+    if (!inHunk) continue;
+
+    if (line.startsWith('-')) {
+      lines.push({
+        oldLine: oldLine++,
+        newLine: null,
+        type: 'delete',
+        content: line.substring(1)
+      });
+    } else if (line.startsWith('+')) {
+      lines.push({
+        oldLine: null,
+        newLine: newLine++,
+        type: 'add',
+        content: line.substring(1)
+      });
+    } else if (line.startsWith(' ')) {
+      lines.push({
+        oldLine: oldLine++,
+        newLine: newLine++,
+        type: 'unchanged',
+        content: line.substring(1)
+      });
+    }
+  }
+
+  // If no diff (new file), show all as added
+  if (lines.length === 0) {
+    contentLines.forEach((content, i) => {
+      lines.push({
+        oldLine: null,
+        newLine: i + 1,
+        type: 'add',
+        content
+      });
+    });
+  }
+
+  return lines;
+}
+
 // Get file content and diff
 app.get('/api/file/:repoId/:filePath(*)', async (req, res) => {
   try {
@@ -87,12 +152,14 @@ app.get('/api/file/:repoId/:filePath(*)', async (req, res) => {
 
     // Get diff for this file
     const git = simpleGit(repoPath);
-    const diff = await git.diff(['HEAD', '--', filePath]);
+    const diffText = await git.diff(['HEAD', '--', filePath]);
+
+    // Parse diff into structured format
+    const diffLines = parseDiff(diffText, content);
 
     res.json({
       filePath,
-      content,
-      diff
+      diffLines
     });
 
   } catch (error) {

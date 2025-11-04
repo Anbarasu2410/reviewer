@@ -84,34 +84,39 @@ async function loadFile(filePath, index) {
       throw new Error(data.error || 'Failed to load file');
     }
 
-    displayCode(data.filePath, data.content);
+    displayCode(data.filePath, data.diffLines);
 
   } catch (error) {
     showStatus(`Error loading file: ${error.message}`, 'error');
   }
 }
 
-// Display code with line numbers
-function displayCode(filePath, content) {
+// Display code with diff highlighting
+function displayCode(filePath, diffLines) {
   const codeSection = document.getElementById('codeSection');
   const currentFileEl = document.getElementById('currentFile');
   const codeViewer = document.getElementById('codeViewer');
 
   currentFileEl.textContent = filePath;
 
-  const lines = content.split('\n');
   const fileComments = comments.filter(c => c.file === filePath);
 
   let html = '';
-  lines.forEach((line, index) => {
-    const lineNum = index + 1;
+  diffLines.forEach((diffLine, index) => {
+    // Use newLine for added/unchanged, oldLine for deleted
+    const lineNum = diffLine.newLine || diffLine.oldLine;
     const hasComment = fileComments.find(c => c.line === lineNum);
 
+    const lineClass = `line diff-${diffLine.type} ${hasComment ? 'commented' : ''}`;
+
     html += `
-      <div class="line ${hasComment ? 'commented' : ''}" data-line="${lineNum}">
+      <div class="${lineClass}" data-line="${lineNum}">
         ${hasComment ? '<span class="comment-indicator"></span>' : ''}
-        <div class="line-number" onclick="toggleCommentInput(${lineNum})">${lineNum}</div>
-        <div class="line-content">${escapeHtml(line) || ' '}</div>
+        <div class="line-numbers">
+          <span class="old-line-number">${diffLine.oldLine || ''}</span>
+          <span class="new-line-number" onclick="toggleCommentInput(${lineNum})">${diffLine.newLine || ''}</span>
+        </div>
+        <div class="line-content">${escapeHtml(diffLine.content) || ' '}</div>
       </div>
     `;
 
