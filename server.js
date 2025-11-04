@@ -44,11 +44,11 @@ app.post('/api/load-repo', async (req, res) => {
     // Get changed files (working directory vs last commit)
     const status = await git.status();
 
-    // Get all modified, new, and deleted files
+    // Get all modified, new, and deleted files with their status
     const changedFiles = [
-      ...status.modified,
-      ...status.created,
-      ...status.not_added
+      ...status.modified.map(file => ({ path: file, status: 'M' })),
+      ...status.created.map(file => ({ path: file, status: 'A' })),
+      ...status.not_added.map(file => ({ path: file, status: 'A' }))
     ];
 
     // Generate unique ID for this session

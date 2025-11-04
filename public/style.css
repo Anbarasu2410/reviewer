@@ -182,15 +182,43 @@ button:disabled {
   font-size: 13px;
   color: #24292e;
   border-left: 3px solid transparent;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.file-item .filename {
+  color: #24292e;
+}
+
+.file-path-text {
+  flex: 1;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
   direction: rtl;
   text-align: left;
+  color: #6a737d;
 }
 
-.file-item .filename {
+.file-status {
+  font-size: 10px;
   font-weight: 600;
+  padding: 2px 6px;
+  border-radius: 3px;
+  text-align: center;
+  min-width: 16px;
+  flex-shrink: 0;
+}
+
+.file-status-added {
+  background: #28a745;
+  color: white;
+}
+
+.file-status-modified {
+  background: #0366d6;
+  color: white;
 }
 
 .file-item:hover {
@@ -270,6 +298,7 @@ button:disabled {
   flex: 1;
   overflow-y: auto;
   background: #ffffff;
+  padding-bottom: 50vh;
 }
 
 .line {

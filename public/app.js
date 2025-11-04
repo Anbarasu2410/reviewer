@@ -58,15 +58,21 @@ function displayFiles(files) {
   const submitBtn = document.getElementById('submitReviewBtn');
   const resizeHandle = document.getElementById('resizeHandle');
 
-  filesList.innerHTML = files.map((file, index) => {
+  filesList.innerHTML = files.map((fileObj, index) => {
+    const file = fileObj.path;
+    const status = fileObj.status;
     const parts = file.split('/');
     const filename = parts[parts.length - 1];
     const path = parts.slice(0, -1).join('/');
 
     // Because of RTL, we need to reverse the order in HTML
     const displayText = path ? `${path}/<span class="filename">${filename}</span>` : `<span class="filename">${filename}</span>`;
+    const statusClass = status === 'A' ? 'file-status-added' : 'file-status-modified';
+    const statusBadge = `<span class="file-status ${statusClass}">${status}</span>`;
 
-    return `<div class="file-item" onclick="loadFile('${file}', ${index})" title="${escapeHtml(file)}">${displayText}</div>`;
+    return `<div class="file-item" onclick="loadFile('${file}', ${index})" title="${escapeHtml(file)}">
+      ${statusBadge}<span class="file-path-text">${displayText}</span>
+    </div>`;
   }).join('');
 
   fileCount.textContent = `${files.length} file${files.length !== 1 ? 's' : ''}`;
@@ -145,7 +151,18 @@ function displayCode(filePath, diffLines) {
   codeSection.classList.remove('hidden');
 
   // Add text selection handler
+  codeViewer.removeEventListener('mousedown', trackShiftKeyDown);
+  codeViewer.removeEventListener('mouseup', handleTextSelection);
+  codeViewer.addEventListener('mousedown', trackShiftKeyDown);
   codeViewer.addEventListener('mouseup', handleTextSelection);
+}
+
+// Track command key state during selection
+let commandKeyPressed = false;
+
+// Track command key on mousedown
+function trackShiftKeyDown(e) {
+  commandKeyPressed = e.metaKey;
 }
 
 // Handle text selection in code viewer
@@ -154,8 +171,18 @@ function handleTextSelection(e) {
   const selectedText = selection.toString().trim();
 
   if (!selectedText) {
+    commandKeyPressed = false;
     return;
   }
+
+  // Only trigger comment input if Command key was held during selection
+  if (!commandKeyPressed) {
+    commandKeyPressed = false;
+    return;
+  }
+
+  // Reset command key tracking
+  commandKeyPressed = false;
 
   // Find the line number where selection ends
   let targetElement = selection.focusNode;
@@ -257,7 +284,7 @@ function saveComment(lineNum, selectedText = null) {
   });
 
   // Reload the current file to show the new comment
-  const fileIndex = currentFiles.indexOf(currentFile);
+  const fileIndex = currentFiles.findIndex(f => f.path === currentFile);
   loadFile(currentFile, fileIndex);
 }
 
@@ -266,7 +293,7 @@ function deleteComment(lineNum) {
   comments = comments.filter(c => !(c.file === currentFile && c.line === lineNum));
 
   // Reload the current file to remove the comment
-  const fileIndex = currentFiles.indexOf(currentFile);
+  const fileIndex = currentFiles.findIndex(f => f.path === currentFile);
   loadFile(currentFile, fileIndex);
 }
 
