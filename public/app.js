@@ -83,7 +83,7 @@ function displayFiles(files) {
 
 // Load file content
 async function loadFile(filePath, index) {
-  if (!currentRepoId) return;
+  if (!currentRepoId) return Promise.resolve();
 
   currentFile = filePath;
 
@@ -101,9 +101,11 @@ async function loadFile(filePath, index) {
     }
 
     displayCode(data.filePath, data.diffLines);
+    return Promise.resolve();
 
   } catch (error) {
     showStatus(`Error loading file: ${error.message}`, 'error');
+    return Promise.reject(error);
   }
 }
 
@@ -138,10 +140,14 @@ function displayCode(filePath, diffLines) {
     `;
 
     if (hasComment) {
+      const selectedTextAttr = hasComment.selectedText ? `'${escapeHtml(hasComment.selectedText).replace(/'/g, "\\'")}'` : 'null';
       html += `
         <div class="comment-box">
           <span class="comment-text">${escapeHtml(hasComment.text)}</span>
-          <button class="comment-delete" onclick="deleteComment(${lineNum})">Delete</button>
+          <div class="comment-actions">
+            <button class="comment-edit" onclick="editComment(${lineNum}, ${selectedTextAttr})">Edit</button>
+            <button class="comment-delete" onclick="deleteComment(${lineNum})">Delete</button>
+          </div>
         </div>
       `;
     }
@@ -250,11 +256,17 @@ function toggleCommentInputWithSelection(lineNum, selectedText = null) {
   const textarea = document.getElementById('commentInput');
   textarea.focus();
 
-  // Add keyboard shortcut for Cmd+Enter or Ctrl+Enter
+  // Add keyboard shortcuts
   textarea.addEventListener('keydown', (e) => {
+    // Cmd/Ctrl+Enter to save
     if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
       e.preventDefault();
       saveComment(lineNum, selectedText);
+    }
+    // Escape to close
+    if (e.key === 'Escape') {
+      e.preventDefault();
+      inputBox.remove();
     }
   });
 }
@@ -286,6 +298,63 @@ function saveComment(lineNum, selectedText = null) {
   // Reload the current file to show the new comment
   const fileIndex = currentFiles.findIndex(f => f.path === currentFile);
   loadFile(currentFile, fileIndex);
+}
+
+// Edit comment
+function editComment(lineNum, selectedText = null) {
+  const comment = comments.find(c => c.file === currentFile && c.line === lineNum);
+  if (!comment) return;
+
+  // Remove the comment from the list temporarily
+  comments = comments.filter(c => !(c.file === currentFile && c.line === lineNum));
+
+  // Reload file and show edit input
+  const fileIndex = currentFiles.findIndex(f => f.path === currentFile);
+  loadFile(currentFile, fileIndex).then(() => {
+    // Show comment input with existing text
+    const lineEl = document.querySelector(`.line[data-line="${lineNum}"]`);
+    if (!lineEl) return;
+
+    const inputBox = document.createElement('div');
+    inputBox.className = 'comment-input-box';
+
+    const selectedTextHtml = selectedText
+      ? `<div class="selected-text-preview">
+           <strong>Selected code:</strong>
+           <pre>${escapeHtml(selectedText)}</pre>
+         </div>`
+      : '';
+
+    inputBox.innerHTML = `
+      ${selectedTextHtml}
+      <textarea placeholder="Enter your comment (Cmd/Ctrl+Enter to save)..." id="commentInput">${escapeHtml(comment.text)}</textarea>
+      <div class="actions">
+        <button onclick="saveComment(${lineNum}, ${selectedText ? `\`${escapeHtml(selectedText).replace(/`/g, '\\`')}\`` : 'null'})">Save Comment</button>
+        <button class="cancel-btn" onclick="this.closest('.comment-input-box').remove()">Cancel</button>
+      </div>
+    `;
+
+    lineEl.after(inputBox);
+    const textarea = document.getElementById('commentInput');
+    textarea.focus();
+    textarea.setSelectionRange(textarea.value.length, textarea.value.length);
+
+    // Add keyboard shortcuts
+    textarea.addEventListener('keydown', (e) => {
+      if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
+        e.preventDefault();
+        saveComment(lineNum, selectedText);
+      }
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        inputBox.remove();
+        // Restore the comment if canceled
+        comments.push(comment);
+        const fileIndex = currentFiles.findIndex(f => f.path === currentFile);
+        loadFile(currentFile, fileIndex);
+      }
+    });
+  });
 }
 
 // Delete comment

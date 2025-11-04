@@ -435,11 +435,26 @@ button:disabled {
   flex: 1;
 }
 
+.comment-actions {
+  display: flex;
+  gap: 8px;
+  margin-left: 12px;
+}
+
+.comment-edit {
+  background: #0366d6;
+  padding: 4px 12px;
+  font-size: 12px;
+}
+
+.comment-edit:hover {
+  background: #0256c5;
+}
+
 .comment-delete {
   background: #dc3545;
   padding: 4px 12px;
   font-size: 12px;
-  margin-left: 12px;
 }
 
 .comment-input-box {
