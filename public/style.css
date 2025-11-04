@@ -425,7 +425,7 @@ button:disabled {
   border-left: 3px solid #f9c513;
   display: flex;
   justify-content: space-between;
-  align-items: center;
+  align-items: flex-start;
   border-radius: 0 0 4px 4px;
 }
 
@@ -433,12 +433,15 @@ button:disabled {
   color: #735c0f;
   font-size: 13px;
   flex: 1;
+  white-space: pre-wrap;
+  word-wrap: break-word;
 }
 
 .comment-actions {
   display: flex;
   gap: 8px;
   margin-left: 12px;
+  flex-shrink: 0;
 }
 
 .comment-edit {
@@ -501,7 +504,8 @@ button:disabled {
   border-radius: 4px;
   font-family: inherit;
   font-size: 13px;
-  resize: vertical;
+  resize: none;
+  overflow: hidden;
   min-height: 60px;
   background: white;
 }

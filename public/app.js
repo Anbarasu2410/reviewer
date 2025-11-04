@@ -256,6 +256,15 @@ function toggleCommentInputWithSelection(lineNum, selectedText = null) {
   const textarea = document.getElementById('commentInput');
   textarea.focus();
 
+  // Auto-resize textarea
+  const autoResize = () => {
+    textarea.style.height = 'auto';
+    textarea.style.height = textarea.scrollHeight + 'px';
+  };
+
+  textarea.addEventListener('input', autoResize);
+  autoResize(); // Initial resize
+
   // Add keyboard shortcuts
   textarea.addEventListener('keydown', (e) => {
     // Cmd/Ctrl+Enter to save
@@ -338,6 +347,15 @@ function editComment(lineNum, selectedText = null) {
     const textarea = document.getElementById('commentInput');
     textarea.focus();
     textarea.setSelectionRange(textarea.value.length, textarea.value.length);
+
+    // Auto-resize textarea
+    const autoResize = () => {
+      textarea.style.height = 'auto';
+      textarea.style.height = textarea.scrollHeight + 'px';
+    };
+
+    textarea.addEventListener('input', autoResize);
+    autoResize(); // Initial resize
 
     // Add keyboard shortcuts
     textarea.addEventListener('keydown', (e) => {
