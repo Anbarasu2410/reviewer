@@ -87,6 +87,10 @@ async function loadFile(filePath, index) {
 
   currentFile = filePath;
 
+  // Reset full context mode when switching files
+  isFullContextMode = false;
+  storedFullFileLines = null;
+
   // Update active file highlight
   document.querySelectorAll('.file-item').forEach((el, i) => {
     el.classList.toggle('active', i === index);
@@ -101,6 +105,7 @@ async function loadFile(filePath, index) {
     }
 
     displayCode(data.filePath, data.diffLines);
+    updateFullContextButton();
     return Promise.resolve();
 
   } catch (error) {
@@ -510,26 +515,54 @@ function resetApp() {
 // Show status message
 function showStatus(message, type) {
   const statusEl = document.getElementById('status');
-  statusEl.textContent = message;
+  statusEl.textContent = 'Status: ' + message;
   statusEl.className = `status ${type}`;
 }
 
-// Show full file context (all lines, not just diff)
+// Track if we're in full context mode
+let isFullContextMode = false;
+let storedFullFileLines = null;
+
+// Toggle between full context and diff-only view
 async function showFullContext() {
   if (!currentRepoId || !currentFile) return;
 
-  try {
-    const response = await fetch(`${API_BASE}/file-full/${currentRepoId}/${currentFile}`);
-    const data = await response.json();
+  if (isFullContextMode) {
+    // Switch back to diff view
+    displayCode(currentFile, currentDiffLines);
+    isFullContextMode = false;
+    updateFullContextButton();
+  } else {
+    // Switch to full context
+    try {
+      const response = await fetch(`${API_BASE}/file-full/${currentRepoId}/${currentFile}`);
+      const data = await response.json();
 
-    if (!response.ok) {
-      throw new Error(data.error || 'Failed to load full file content');
+      if (!response.ok) {
+        throw new Error(data.error || 'Failed to load full file content');
+      }
+
+      storedFullFileLines = data.lines;
+      displayFullContext(data.filePath, data.lines);
+      isFullContextMode = true;
+      updateFullContextButton();
+
+    } catch (error) {
+      showStatus(`Error loading full context: ${error.message}`, 'error');
     }
+  }
+}
 
-    displayFullContext(data.filePath, data.lines);
-
-  } catch (error) {
-    showStatus(`Error loading full context: ${error.message}`, 'error');
+// Update the full context button text
+function updateFullContextButton() {
+  const button = document.querySelector('.full-context-btn');
+  if (button) {
+    const icon = button.querySelector('svg');
+    if (isFullContextMode) {
+      button.innerHTML = icon.outerHTML + ' Show Diff Only';
+    } else {
+      button.innerHTML = icon.outerHTML + ' Full Context';
+    }
   }
 }
 
