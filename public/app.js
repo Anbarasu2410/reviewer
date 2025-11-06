@@ -79,6 +79,9 @@ function displayFiles(files) {
   sidebar.classList.remove('hidden');
   resizeHandle.classList.remove('hidden');
   submitBtn.classList.remove('hidden');
+
+  // Update comments sidebar
+  updateCommentsSidebar();
 }
 
 // Load file content
@@ -322,6 +325,9 @@ function saveComment(diffLineIndex, selectedText = null) {
     text: text
   });
 
+  // Update comments sidebar
+  updateCommentsSidebar();
+
   // Reload the current file to show the new comment
   const fileIndex = currentFiles.findIndex(f => f.path === currentFile);
   loadFile(currentFile, fileIndex);
@@ -396,6 +402,9 @@ function editComment(diffLineIndex, selectedText = null) {
 // Delete comment
 function deleteComment(diffLineIndex) {
   comments = comments.filter(c => !(c.file === currentFile && c.diffLineIndex === diffLineIndex));
+
+  // Update comments sidebar
+  updateCommentsSidebar();
 
   // Reload the current file to remove the comment
   const fileIndex = currentFiles.findIndex(f => f.path === currentFile);
@@ -512,6 +521,7 @@ function resetApp() {
   document.getElementById('sidebar').classList.add('hidden');
   document.getElementById('resizeHandle').classList.add('hidden');
   document.getElementById('codeSection').classList.add('hidden');
+  document.getElementById('commentsSidebar').classList.add('hidden');
   document.getElementById('submitReviewBtn').classList.add('hidden');
   document.getElementById('status').textContent = '';
   document.getElementById('status').className = 'status';
@@ -687,8 +697,12 @@ function escapeHtml(text) {
 function initResizeHandle() {
   const resizeHandle = document.getElementById('resizeHandle');
   const sidebar = document.getElementById('sidebar');
+  const commentsResizeHandle = document.getElementById('commentsResizeHandle');
+  const commentsSidebar = document.getElementById('commentsSidebar');
   let isResizing = false;
+  let isResizingComments = false;
 
+  // Left sidebar resize
   resizeHandle.addEventListener('mousedown', (e) => {
     isResizing = true;
     resizeHandle.classList.add('resizing');
@@ -696,15 +710,33 @@ function initResizeHandle() {
     document.body.style.userSelect = 'none';
   });
 
+  // Comments sidebar resize
+  commentsResizeHandle.addEventListener('mousedown', (e) => {
+    isResizingComments = true;
+    commentsResizeHandle.classList.add('resizing');
+    document.body.style.cursor = 'col-resize';
+    document.body.style.userSelect = 'none';
+  });
+
   document.addEventListener('mousemove', (e) => {
-    if (!isResizing) return;
+    if (isResizing) {
+      const newWidth = e.clientX;
+      const minWidth = 200;
+      const maxWidth = 600;
 
-    const newWidth = e.clientX;
-    const minWidth = 200;
-    const maxWidth = 600;
+      if (newWidth >= minWidth && newWidth <= maxWidth) {
+        sidebar.style.width = `${newWidth}px`;
+      }
+    }
 
-    if (newWidth >= minWidth && newWidth <= maxWidth) {
-      sidebar.style.width = `${newWidth}px`;
+    if (isResizingComments) {
+      const newWidth = window.innerWidth - e.clientX;
+      const minWidth = 250;
+      const maxWidth = 600;
+
+      if (newWidth >= minWidth && newWidth <= maxWidth) {
+        commentsSidebar.style.width = `${newWidth}px`;
+      }
     }
   });
 
@@ -715,11 +747,107 @@ function initResizeHandle() {
       document.body.style.cursor = '';
       document.body.style.userSelect = '';
     }
+    if (isResizingComments) {
+      isResizingComments = false;
+      commentsResizeHandle.classList.remove('resizing');
+      document.body.style.cursor = '';
+      document.body.style.userSelect = '';
+    }
   });
 }
 
 // Track current file index for keyboard navigation
 let currentFileIndex = -1;
+
+// Update comments sidebar
+function updateCommentsSidebar() {
+  const sidebar = document.getElementById('commentsSidebar');
+  const commentsList = document.getElementById('commentsList');
+  const commentsCount = document.getElementById('commentsCount');
+  const commentsResizeHandle = document.getElementById('commentsResizeHandle');
+
+  commentsCount.textContent = comments.length;
+
+  if (comments.length === 0) {
+    sidebar.classList.add('hidden');
+    commentsResizeHandle.classList.add('hidden');
+    commentsList.innerHTML = '<div style="text-align: center; color: #586069; padding: 20px; font-size: 13px;">No comments yet</div>';
+    return;
+  }
+
+  sidebar.classList.remove('hidden');
+  commentsResizeHandle.classList.remove('hidden');
+
+  // Group comments by file
+  const commentsByFile = {};
+  comments.forEach(comment => {
+    if (!commentsByFile[comment.file]) {
+      commentsByFile[comment.file] = [];
+    }
+    commentsByFile[comment.file].push(comment);
+  });
+
+  let html = '';
+  for (const [file, fileComments] of Object.entries(commentsByFile)) {
+    fileComments
+      .sort((a, b) => a.line - b.line)
+      .forEach(comment => {
+        const selectedHtml = comment.selectedText
+          ? `<div class="comment-item-selected">${escapeHtml(comment.selectedText)}</div>`
+          : '';
+
+        const fileEscaped = file.replace(/'/g, "\\'");
+        html += `
+          <div class="comment-item">
+            <button class="comment-item-delete" onclick="event.stopPropagation(); deleteCommentFromSidebar('${fileEscaped}', ${comment.diffLineIndex})" title="Delete comment">×</button>
+            <div class="comment-item-content" onclick="jumpToComment('${fileEscaped}', ${comment.diffLineIndex})">
+              <div class="comment-item-file">${escapeHtml(file)}</div>
+              <div class="comment-item-line">Line ${comment.line}</div>
+              <div class="comment-item-text">${escapeHtml(comment.text)}</div>
+              ${selectedHtml}
+            </div>
+          </div>
+        `;
+      });
+  }
+
+  commentsList.innerHTML = html;
+}
+
+// Delete comment from sidebar
+function deleteCommentFromSidebar(file, diffLineIndex) {
+  comments = comments.filter(c => !(c.file === file && c.diffLineIndex === diffLineIndex));
+
+  // Update comments sidebar
+  updateCommentsSidebar();
+
+  // If we're currently viewing this file, reload it to remove the comment
+  if (currentFile === file) {
+    const fileIndex = currentFiles.findIndex(f => f.path === file);
+    loadFile(file, fileIndex);
+  }
+}
+
+// Jump to a specific comment
+function jumpToComment(file, diffLineIndex) {
+  // Find the file index
+  const fileIndex = currentFiles.findIndex(f => f.path === file);
+  if (fileIndex === -1) return;
+
+  // Load the file
+  loadFile(file, fileIndex).then(() => {
+    // Scroll to the comment
+    const lineEl = document.querySelector(`.line[data-diff-index="${diffLineIndex}"]`);
+    if (lineEl) {
+      lineEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      // Highlight briefly
+      lineEl.style.backgroundColor = 'rgba(3, 102, 214, 0.1)';
+      setTimeout(() => {
+        lineEl.style.backgroundColor = '';
+      }, 1000);
+    }
+  });
+}
 
 // Navigate to next/previous file
 function navigateFiles(direction) {
