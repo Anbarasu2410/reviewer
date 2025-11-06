@@ -784,3 +784,116 @@ button:disabled {
 .review-modal-footer button {
   padding: 10px 20px;
 }
+
+/* Fuzzy matched comments */
+.comment-box-fuzzy {
+  background: #fff9e6 !important;
+  border-left-color: #ffa500 !important;
+}
+
+.comment-fuzzy-warning {
+  font-size: 12px;
+  color: #856404;
+  background: #fff3cd;
+  padding: 6px 10px;
+  border-radius: 3px;
+  margin-bottom: 8px;
+  border: 1px solid #ffeaa7;
+}
+
+.comment-original-code {
+  margin-top: 6px;
+  font-size: 11px;
+  color: #6c757d;
+}
+
+.comment-original-code code {
+  background: white;
+  padding: 2px 6px;
+  border-radius: 3px;
+  font-family: 'Monaco', 'Courier New', monospace;
+  border: 1px solid #e1e4e8;
+}
+
+/* Unmatched comments section */
+.unmatched-comments-section {
+  margin: 20px 90px 20px 93px;
+  padding: 16px;
+  background: #fff5f5;
+  border-left: 3px solid #dc3545;
+  border-radius: 4px;
+}
+
+.unmatched-comment-item {
+  background: white;
+  border-radius: 6px;
+  margin-bottom: 12px;
+  border: 1px solid #f5c6cb;
+  overflow: hidden;
+}
+
+.unmatched-comment-header {
+  padding: 12px 16px;
+  background: #f8d7da;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  transition: background 0.2s;
+}
+
+.unmatched-comment-header:hover {
+  background: #f1b0b7;
+}
+
+.unmatched-comment-icon {
+  font-size: 16px;
+}
+
+.unmatched-comment-title {
+  flex: 1;
+  font-size: 13px;
+  font-weight: 600;
+  color: #721c24;
+}
+
+.unmatched-comment-toggle {
+  font-size: 12px;
+  color: #721c24;
+  transition: transform 0.2s;
+}
+
+.unmatched-comment-body {
+  padding: 16px;
+  display: block;
+}
+
+.unmatched-comment-item.collapsed .unmatched-comment-body {
+  display: none;
+}
+
+.unmatched-comment-original {
+  margin-bottom: 12px;
+  padding: 10px;
+  background: #f8f9fa;
+  border-radius: 4px;
+  border: 1px solid #e1e4e8;
+}
+
+.unmatched-comment-original strong {
+  display: block;
+  margin-bottom: 6px;
+  font-size: 12px;
+  color: #6c757d;
+}
+
+.unmatched-comment-original code {
+  display: block;
+  padding: 6px 8px;
+  background: white;
+  border-radius: 3px;
+  font-family: 'Monaco', 'Courier New', monospace;
+  font-size: 12px;
+  color: #24292e;
+  border: 1px solid #e1e4e8;
+}

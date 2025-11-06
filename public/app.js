@@ -6,6 +6,128 @@ let currentFile = null;
 let currentDiffLines = [];
 let comments = [];
 
+// Auto-save comments to backend
+async function saveCommentsToBackend() {
+  if (!currentRepoId) return;
+
+  try {
+    await fetch(`${API_BASE}/save-comments`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        repoId: currentRepoId,
+        comments: comments // Send empty array if no comments
+      })
+    });
+  } catch (error) {
+    console.error('Failed to save comments:', error);
+  }
+}
+
+// Load comments from backend
+async function loadCommentsFromBackend() {
+  if (!currentRepoId) return [];
+
+  try {
+    const response = await fetch(`${API_BASE}/load-comments/${currentRepoId}`);
+    const data = await response.json();
+    return data.comments || [];
+  } catch (error) {
+    console.error('Failed to load comments:', error);
+    return [];
+  }
+}
+
+// Fuzzy match saved comments to current diff
+function matchCommentsToDiff(savedComments, filePath, diffLines) {
+  const fileComments = savedComments.filter(c => c.file === filePath);
+  const matched = [];
+
+  fileComments.forEach(savedComment => {
+    let matchResult = null;
+
+    // Try exact match first (line number + content)
+    const exactMatch = diffLines.findIndex(dl =>
+      (dl.newLine === savedComment.line || dl.oldLine === savedComment.line) &&
+      dl.content === savedComment.lineContent
+    );
+
+    if (exactMatch !== -1) {
+      matchResult = {
+        ...savedComment,
+        diffLineIndex: exactMatch,
+        matchType: 'exact'
+      };
+    } else {
+      // Try fuzzy match (search ±5 lines for similar content)
+      let bestMatch = -1;
+      let bestSimilarity = 0;
+
+      for (let i = 0; i < diffLines.length; i++) {
+        const dl = diffLines[i];
+        const lineNum = dl.newLine || dl.oldLine;
+
+        // Check if within ±5 lines
+        if (Math.abs(lineNum - savedComment.line) <= 5) {
+          const similarity = calculateSimilarity(dl.content, savedComment.lineContent);
+          if (similarity > bestSimilarity && similarity > 0.6) {
+            bestSimilarity = similarity;
+            bestMatch = i;
+          }
+        }
+      }
+
+      if (bestMatch !== -1) {
+        matchResult = {
+          ...savedComment,
+          diffLineIndex: bestMatch,
+          matchType: 'fuzzy',
+          newLineContent: diffLines[bestMatch].content
+        };
+      } else {
+        // No match found - mark as unmatched
+        matchResult = {
+          ...savedComment,
+          diffLineIndex: null,
+          matchType: 'unmatched'
+        };
+      }
+    }
+
+    if (matchResult) {
+      matched.push(matchResult);
+    }
+  });
+
+  return matched;
+}
+
+// Simple similarity calculation (Levenshtein-based approximation)
+function calculateSimilarity(str1, str2) {
+  if (str1 === str2) return 1;
+  if (!str1 || !str2) return 0;
+
+  const longer = str1.length > str2.length ? str1 : str2;
+  const shorter = str1.length > str2.length ? str2 : str1;
+
+  if (longer.length === 0) return 1;
+
+  // Simple matching: count common characters
+  const longerLower = longer.toLowerCase().trim();
+  const shorterLower = shorter.toLowerCase().trim();
+
+  if (longerLower.includes(shorterLower) || shorterLower.includes(longerLower)) {
+    return 0.8;
+  }
+
+  // Count matching words
+  const words1 = str1.toLowerCase().split(/\s+/);
+  const words2 = str2.toLowerCase().split(/\s+/);
+  const commonWords = words1.filter(w => words2.includes(w));
+
+  return commonWords.length / Math.max(words1.length, words2.length);
+}
+
 // Load local repository
 async function loadRepo() {
   const repoPath = document.getElementById('repoPath').value.trim();
@@ -42,6 +164,14 @@ async function loadRepo() {
 
     showStatus(data.message, 'success');
     displayFiles(data.files);
+
+    // Load saved comments
+    const savedComments = await loadCommentsFromBackend();
+    if (savedComments.length > 0) {
+      // Store saved comments in a global variable for matching later
+      window.savedComments = savedComments;
+      showStatus(`${data.message} - Loaded ${savedComments.length} saved comment(s)`, 'success');
+    }
 
   } catch (error) {
     showStatus(`Error: ${error.message}`, 'error');
@@ -111,6 +241,36 @@ async function loadFile(filePath, index) {
       throw new Error(data.error || 'Failed to load file');
     }
 
+    // Match saved comments to current diff if available
+    if (window.savedComments && window.savedComments.length > 0) {
+      const matchedComments = matchCommentsToDiff(window.savedComments, filePath, data.diffLines);
+
+      // Add matched comments to the comments array (avoid duplicates)
+      matchedComments.forEach(mc => {
+        const exists = comments.find(c =>
+          c.file === mc.file &&
+          c.line === mc.line &&
+          c.text === mc.text
+        );
+
+        if (!exists) {
+          comments.push({
+            file: mc.file,
+            diffLineIndex: mc.diffLineIndex,
+            line: mc.line,
+            lineContent: mc.lineContent,
+            selectedText: mc.selectedText,
+            text: mc.text,
+            matchType: mc.matchType,
+            newLineContent: mc.newLineContent
+          });
+        }
+      });
+
+      // Update comments sidebar after adding matched comments
+      updateCommentsSidebar();
+    }
+
     displayCode(data.filePath, data.diffLines);
     updateFullContextButton();
     return Promise.resolve();
@@ -160,8 +320,17 @@ function displayCode(filePath, diffLines) {
 
     if (hasComment) {
       const selectedTextAttr = hasComment.selectedText ? `'${escapeHtml(hasComment.selectedText).replace(/'/g, "\\'")}'` : 'null';
+      const matchTypeClass = hasComment.matchType === 'fuzzy' ? 'comment-box-fuzzy' : '';
+      const fuzzyWarning = hasComment.matchType === 'fuzzy' ? `
+        <div class="comment-fuzzy-warning">
+          ⚠️ Code changed - comment anchored to similar line
+          ${hasComment.newLineContent !== hasComment.lineContent ? `<div class="comment-original-code">Original: <code>${escapeHtml(hasComment.lineContent)}</code></div>` : ''}
+        </div>
+      ` : '';
+
       html += `
-        <div class="comment-box">
+        <div class="comment-box ${matchTypeClass}">
+          ${fuzzyWarning}
           <span class="comment-text">${escapeHtml(hasComment.text)}</span>
           <div class="comment-actions">
             <button class="comment-edit" onclick="editComment(${diffLineIndex}, ${selectedTextAttr})">Edit</button>
@@ -172,6 +341,36 @@ function displayCode(filePath, diffLines) {
     }
   });
 
+  // Show unmatched comments at the end
+  const unmatchedComments = fileComments.filter(c => c.matchType === 'unmatched');
+  if (unmatchedComments.length > 0) {
+    html += '<div class="unmatched-comments-section">';
+    unmatchedComments.forEach(comment => {
+      const commentId = `unmatched-${Math.random().toString(36).substr(2, 9)}`;
+      html += `
+        <div class="unmatched-comment-item collapsed" id="${commentId}">
+          <div class="unmatched-comment-header" onclick="toggleUnmatchedComment('${commentId}')">
+            <span class="unmatched-comment-icon">⚠️</span>
+            <span class="unmatched-comment-title">Comment not found (Line ${comment.line} changed)</span>
+            <span class="unmatched-comment-toggle">▶</span>
+          </div>
+          <div class="unmatched-comment-body">
+            <div class="unmatched-comment-original">
+              <strong>Original line:</strong>
+              <code>${escapeHtml(comment.lineContent)}</code>
+            </div>
+            <div class="comment-text">${escapeHtml(comment.text)}</div>
+            ${comment.selectedText ? `<div class="comment-item-selected">${escapeHtml(comment.selectedText)}</div>` : ''}
+            <div class="comment-actions">
+              <button class="comment-delete" onclick="deleteUnmatchedComment('${escapeHtml(comment.file)}', ${comment.line}, '${escapeHtml(comment.text).replace(/'/g, "\\'")}')">Delete</button>
+            </div>
+          </div>
+        </div>
+      `;
+    });
+    html += '</div>';
+  }
+
   codeViewer.innerHTML = html;
   codeSection.classList.remove('hidden');
 
@@ -180,6 +379,35 @@ function displayCode(filePath, diffLines) {
   codeViewer.removeEventListener('mouseup', handleTextSelection);
   codeViewer.addEventListener('mousedown', trackShiftKeyDown);
   codeViewer.addEventListener('mouseup', handleTextSelection);
+}
+
+// Toggle unmatched comment expansion
+function toggleUnmatchedComment(commentId) {
+  const element = document.getElementById(commentId);
+  if (!element) return;
+
+  element.classList.toggle('collapsed');
+  const toggle = element.querySelector('.unmatched-comment-toggle');
+  if (toggle) {
+    toggle.textContent = element.classList.contains('collapsed') ? '▶' : '▼';
+  }
+}
+
+// Delete unmatched comment
+function deleteUnmatchedComment(file, line, text) {
+  comments = comments.filter(c => !(c.file === file && c.line === line && c.text === text));
+
+  // Auto-save to backend
+  saveCommentsToBackend();
+
+  // Update comments sidebar
+  updateCommentsSidebar();
+
+  // Reload the current file to remove the comment
+  if (currentFile === file) {
+    const fileIndex = currentFiles.findIndex(f => f.path === file);
+    loadFile(file, fileIndex);
+  }
 }
 
 // Track command key state during selection
@@ -193,9 +421,9 @@ function trackShiftKeyDown(e) {
 // Handle text selection in code viewer
 function handleTextSelection(e) {
   const selection = window.getSelection();
-  const selectedText = selection.toString().trim();
+  const rawSelectedText = selection.toString().trim();
 
-  if (!selectedText) {
+  if (!rawSelectedText) {
     commandKeyPressed = false;
     return;
   }
@@ -209,6 +437,23 @@ function handleTextSelection(e) {
   // Reset command key tracking
   commandKeyPressed = false;
 
+  // Extract only the code content, excluding line numbers
+  const range = selection.getRangeAt(0);
+  const container = document.createElement('div');
+  container.appendChild(range.cloneContents());
+
+  // Remove all line numbers from the cloned selection
+  const lineNumbers = container.querySelectorAll('.line-numbers, .old-line-number, .new-line-number');
+  lineNumbers.forEach(el => el.remove());
+
+  // Get the cleaned text
+  const selectedText = container.textContent.trim();
+
+  if (!selectedText) {
+    selection.removeAllRanges();
+    return;
+  }
+
   // Find the line element where selection ends
   let targetElement = selection.focusNode;
 
@@ -218,11 +463,13 @@ function handleTextSelection(e) {
   }
 
   if (!targetElement) {
+    selection.removeAllRanges();
     return;
   }
 
   const diffLineIndex = parseInt(targetElement.dataset.diffIndex);
   if (diffLineIndex === undefined || isNaN(diffLineIndex)) {
+    selection.removeAllRanges();
     return;
   }
 
@@ -322,8 +569,12 @@ function saveComment(diffLineIndex, selectedText = null) {
     line: lineNum,
     lineContent: lineContent,
     selectedText: selectedText,
-    text: text
+    text: text,
+    matchType: 'exact' // New comments are exact matches
   });
+
+  // Auto-save to backend
+  saveCommentsToBackend();
 
   // Update comments sidebar
   updateCommentsSidebar();
@@ -403,6 +654,9 @@ function editComment(diffLineIndex, selectedText = null) {
 function deleteComment(diffLineIndex) {
   comments = comments.filter(c => !(c.file === currentFile && c.diffLineIndex === diffLineIndex));
 
+  // Auto-save to backend
+  saveCommentsToBackend();
+
   // Update comments sidebar
   updateCommentsSidebar();
 
@@ -413,18 +667,21 @@ function deleteComment(diffLineIndex) {
 
 // Submit review
 async function submitReview() {
-  if (comments.length === 0) {
-    showStatus('Please add at least one comment before submitting', 'error');
+  if (!currentRepoId) {
+    showStatus('Please load a repository first', 'error');
     return;
   }
+
+  // Ensure comments are saved before generating review
+  await saveCommentsToBackend();
 
   try {
     const response = await fetch(`${API_BASE}/submit-review`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        repoId: currentRepoId,
-        comments: comments
+        repoId: currentRepoId
+        // Backend reads from JSON file (single source of truth)
       })
     });
 
@@ -817,6 +1074,9 @@ function updateCommentsSidebar() {
 // Delete comment from sidebar
 function deleteCommentFromSidebar(file, diffLineIndex) {
   comments = comments.filter(c => !(c.file === file && c.diffLineIndex === diffLineIndex));
+
+  // Auto-save to backend
+  saveCommentsToBackend();
 
   // Update comments sidebar
   updateCommentsSidebar();

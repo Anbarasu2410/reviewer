@@ -195,24 +195,127 @@ app.get('/api/file-full/:repoId/:filePath(*)', async (req, res) => {
   }
 });
 
-// Submit review
-app.post('/api/submit-review', async (req, res) => {
+// Save comments to file
+app.post('/api/save-comments', async (req, res) => {
   try {
     const { repoId, comments } = req.body;
-
-    if (!comments || comments.length === 0) {
-      return res.status(400).json({ error: 'No comments provided' });
-    }
 
     const repoPath = repoPathMap.get(repoId);
     if (!repoPath) {
       return res.status(400).json({ error: 'Invalid repository ID' });
     }
 
-    // Generate review content
+    // Create unique filename from repo path
+    const repoName = path.basename(repoPath);
+    const filename = `.code-review-comments-${repoName}.json`;
+    const commentsPath = path.join(REVIEWS_DIR, filename);
+
+    // Ensure reviews directory exists
+    try {
+      await fs.mkdir(REVIEWS_DIR, { recursive: true });
+    } catch (err) {
+      // Directory might already exist
+    }
+
+    // Save comments with metadata
+    const data = {
+      repoPath,
+      lastUpdated: new Date().toISOString(),
+      comments: comments.map(c => {
+        const comment = {
+          file: c.file,
+          line: c.line,
+          lineContent: c.lineContent,
+          text: c.text
+        };
+
+        // Only include selectedText if it's not null/undefined/empty
+        if (c.selectedText) {
+          comment.selectedText = c.selectedText;
+        }
+
+        return comment;
+      })
+    };
+
+    await fs.writeFile(commentsPath, JSON.stringify(data, null, 2));
+
+    res.json({ message: 'Comments saved successfully' });
+
+  } catch (error) {
+    console.error('Save comments error:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Load comments from file
+app.get('/api/load-comments/:repoId', async (req, res) => {
+  try {
+    const { repoId } = req.params;
+
+    const repoPath = repoPathMap.get(repoId);
+    if (!repoPath) {
+      return res.status(400).json({ error: 'Invalid repository ID' });
+    }
+
+    // Create filename from repo path
+    const repoName = path.basename(repoPath);
+    const filename = `.code-review-comments-${repoName}.json`;
+    const commentsPath = path.join(REVIEWS_DIR, filename);
+
+    // Check if file exists
+    try {
+      await fs.access(commentsPath);
+    } catch {
+      return res.json({ comments: [] });
+    }
+
+    // Load comments
+    const data = await fs.readFile(commentsPath, 'utf-8');
+    const parsed = JSON.parse(data);
+
+    res.json({ comments: parsed.comments || [] });
+
+  } catch (error) {
+    console.error('Load comments error:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Submit review - read from JSON (source of truth) and generate txt
+app.post('/api/submit-review', async (req, res) => {
+  try {
+    const { repoId } = req.body;
+
+    const repoPath = repoPathMap.get(repoId);
+    if (!repoPath) {
+      return res.status(400).json({ error: 'Invalid repository ID' });
+    }
+
+    // Read from JSON file (single source of truth)
+    const repoName = path.basename(repoPath);
+    const jsonFilename = `.code-review-comments-${repoName}.json`;
+    const jsonPath = path.join(REVIEWS_DIR, jsonFilename);
+
+    let comments = [];
+    try {
+      const data = await fs.readFile(jsonPath, 'utf-8');
+      const parsed = JSON.parse(data);
+      comments = parsed.comments || [];
+    } catch (error) {
+      // No saved comments found
+      return res.status(400).json({ error: 'No comments found. Please add comments before submitting review.' });
+    }
+
+    if (comments.length === 0) {
+      return res.status(400).json({ error: 'No comments found. Please add comments before submitting review.' });
+    }
+
+    // Generate review content from JSON
     let reviewContent = '# Code Review\n\n';
     reviewContent += `Repository: ${repoPath}\n`;
-    reviewContent += `Generated: ${new Date().toISOString()}\n\n`;
+    reviewContent += `Generated: ${new Date().toISOString()}\n`;
+    reviewContent += `Total Comments: ${comments.length}\n\n`;
 
     // Group comments by file
     const fileGroups = {};
@@ -241,14 +344,15 @@ app.post('/api/submit-review', async (req, res) => {
         });
     }
 
-    // Create unique filename from repo path
-    const repoName = path.basename(repoPath);
-    const timestamp = new Date().toISOString().replace(/[:.]/g, '-').split('T')[0];
+    // Create unique filename with timestamp
+    const timestamp = new Date().toISOString().replace(/[:.]/g, '-').split('T').join('_');
     const filename = `review_${repoName}_${timestamp}.txt`;
     const reviewPath = path.join(REVIEWS_DIR, filename);
 
     // Save review file
     await fs.writeFile(reviewPath, reviewContent);
+
+    console.log(`Review generated: ${filename} (${comments.length} comments)`);
 
     res.json({
       message: 'Review submitted successfully',
