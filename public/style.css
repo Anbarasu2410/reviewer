@@ -597,6 +597,86 @@ button:disabled {
   font-size: 12px;
 }
 
+.comment-reply {
+  background: #6f42c1;
+  padding: 4px 12px;
+  font-size: 12px;
+}
+
+.comment-reply:hover {
+  background: #5a32a3;
+}
+
+/* Follow-ups */
+.comment-followups {
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid rgba(0, 0, 0, 0.1);
+}
+
+.comment-followup-item {
+  margin-bottom: 8px;
+  padding: 8px 12px;
+  background: rgba(255, 255, 255, 0.5);
+  border-radius: 4px;
+  border-left: 2px solid #6f42c1;
+}
+
+.followup-text {
+  display: block;
+  font-size: 12px;
+  color: #24292e;
+  margin-bottom: 4px;
+  white-space: pre-wrap;
+  word-wrap: break-word;
+}
+
+.followup-timestamp {
+  display: block;
+  font-size: 10px;
+  color: #6a737d;
+  font-style: italic;
+}
+
+/* Follow-up input box */
+.followup-input-box {
+  margin-top: 12px;
+  padding: 12px;
+  background: #f0f4ff;
+  border-left: 3px solid #6f42c1;
+  border-radius: 4px;
+}
+
+.followup-input-box textarea {
+  width: 100%;
+  padding: 8px 12px;
+  border: 1px solid #d1d5da;
+  border-radius: 4px;
+  font-family: inherit;
+  font-size: 13px;
+  resize: none;
+  overflow: hidden;
+  min-height: 50px;
+  background: white;
+}
+
+.followup-input-box textarea:focus {
+  outline: none;
+  border-color: #6f42c1;
+  box-shadow: 0 0 0 3px rgba(111, 66, 193, 0.1);
+}
+
+.followup-input-box .actions {
+  margin-top: 8px;
+  display: flex;
+  gap: 8px;
+}
+
+.followup-input-box button {
+  padding: 6px 14px;
+  font-size: 13px;
+}
+
 .comment-input-box {
   margin: 0 90px 0 93px;
   padding: 12px;

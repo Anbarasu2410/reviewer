@@ -234,6 +234,11 @@ app.post('/api/save-comments', async (req, res) => {
           comment.selectedText = c.selectedText;
         }
 
+        // Include follow-ups if they exist
+        if (c.followUps && c.followUps.length > 0) {
+          comment.followUps = c.followUps;
+        }
+
         return comment;
       })
     };
@@ -340,7 +345,22 @@ app.post('/api/submit-review', async (req, res) => {
           if (comment.selectedText) {
             reviewContent += `**Selected code:**\n\`\`\`\n${comment.selectedText}\n\`\`\`\n`;
           }
-          reviewContent += `${comment.text}\n\n`;
+          reviewContent += `${comment.text}\n`;
+
+          // Add follow-ups if they exist
+          if (comment.followUps && comment.followUps.length > 0) {
+            reviewContent += `\n**Follow-ups:**\n`;
+            comment.followUps.forEach((followUp, idx) => {
+              const timestamp = followUp.timestamp ? new Date(followUp.timestamp).toLocaleString() : '';
+              reviewContent += `  ${idx + 1}. ${followUp.text}`;
+              if (timestamp) {
+                reviewContent += ` (${timestamp})`;
+              }
+              reviewContent += `\n`;
+            });
+          }
+
+          reviewContent += `\n`;
         });
     }
 

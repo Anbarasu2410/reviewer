@@ -328,11 +328,29 @@ function displayCode(filePath, diffLines) {
         </div>
       ` : '';
 
+      // Generate follow-ups HTML
+      let followUpsHtml = '';
+      if (hasComment.followUps && hasComment.followUps.length > 0) {
+        followUpsHtml = '<div class="comment-followups">';
+        hasComment.followUps.forEach((followUp, idx) => {
+          const timestamp = followUp.timestamp ? new Date(followUp.timestamp).toLocaleString() : '';
+          followUpsHtml += `
+            <div class="comment-followup-item">
+              <span class="followup-text">${escapeHtml(followUp.text)}</span>
+              ${timestamp ? `<span class="followup-timestamp">${timestamp}</span>` : ''}
+            </div>
+          `;
+        });
+        followUpsHtml += '</div>';
+      }
+
       html += `
         <div class="comment-box ${matchTypeClass}">
           ${fuzzyWarning}
           <span class="comment-text">${escapeHtml(hasComment.text)}</span>
+          ${followUpsHtml}
           <div class="comment-actions">
+            <button class="comment-reply" onclick="addFollowUp(${diffLineIndex})">Reply</button>
             <button class="comment-edit" onclick="editComment(${diffLineIndex}, ${selectedTextAttr})">Edit</button>
             <button class="comment-delete" onclick="deleteComment(${diffLineIndex})">Delete</button>
           </div>
@@ -347,6 +365,23 @@ function displayCode(filePath, diffLines) {
     html += '<div class="unmatched-comments-section">';
     unmatchedComments.forEach(comment => {
       const commentId = `unmatched-${Math.random().toString(36).substr(2, 9)}`;
+
+      // Generate follow-ups for unmatched comments
+      let unmatchedFollowUpsHtml = '';
+      if (comment.followUps && comment.followUps.length > 0) {
+        unmatchedFollowUpsHtml = '<div class="comment-followups">';
+        comment.followUps.forEach((followUp, idx) => {
+          const timestamp = followUp.timestamp ? new Date(followUp.timestamp).toLocaleString() : '';
+          unmatchedFollowUpsHtml += `
+            <div class="comment-followup-item">
+              <span class="followup-text">${escapeHtml(followUp.text)}</span>
+              ${timestamp ? `<span class="followup-timestamp">${timestamp}</span>` : ''}
+            </div>
+          `;
+        });
+        unmatchedFollowUpsHtml += '</div>';
+      }
+
       html += `
         <div class="unmatched-comment-item collapsed" id="${commentId}">
           <div class="unmatched-comment-header" onclick="toggleUnmatchedComment('${commentId}')">
@@ -361,7 +396,9 @@ function displayCode(filePath, diffLines) {
             </div>
             <div class="comment-text">${escapeHtml(comment.text)}</div>
             ${comment.selectedText ? `<div class="comment-item-selected">${escapeHtml(comment.selectedText)}</div>` : ''}
+            ${unmatchedFollowUpsHtml}
             <div class="comment-actions">
+              <button class="comment-reply" onclick="addFollowUpToUnmatched('${escapeHtml(comment.file)}', ${comment.line}, '${escapeHtml(comment.text).replace(/'/g, "\\'")}')">Reply</button>
               <button class="comment-delete" onclick="deleteUnmatchedComment('${escapeHtml(comment.file)}', ${comment.line}, '${escapeHtml(comment.text).replace(/'/g, "\\'")}')">Delete</button>
             </div>
           </div>
@@ -410,6 +447,204 @@ function deleteUnmatchedComment(file, line, text) {
   }
 }
 
+// Add follow-up to a regular comment
+function addFollowUp(diffLineIndex) {
+  // Remove any existing follow-up input
+  const existingInput = document.querySelector('.followup-input-box');
+  if (existingInput) {
+    existingInput.remove();
+  }
+
+  // Find the comment box
+  const lineEl = document.querySelector(`.line[data-diff-index="${diffLineIndex}"]`);
+  if (!lineEl) return;
+
+  const commentBox = lineEl.nextElementSibling;
+  if (!commentBox || !commentBox.classList.contains('comment-box')) return;
+
+  // Create follow-up input
+  const inputBox = document.createElement('div');
+  inputBox.className = 'followup-input-box';
+  inputBox.innerHTML = `
+    <textarea placeholder="Enter your follow-up (Cmd/Ctrl+Enter to save)..." id="followupInput"></textarea>
+    <div class="actions">
+      <button onclick="saveFollowUp(${diffLineIndex})">Add Follow-up</button>
+      <button class="cancel-btn" onclick="this.closest('.followup-input-box').remove()">Cancel</button>
+    </div>
+  `;
+
+  // Insert after the comment actions
+  const actionsDiv = commentBox.querySelector('.comment-actions');
+  if (actionsDiv) {
+    actionsDiv.after(inputBox);
+  }
+
+  const textarea = document.getElementById('followupInput');
+  textarea.focus();
+
+  // Auto-resize textarea
+  const autoResize = () => {
+    textarea.style.height = 'auto';
+    textarea.style.height = textarea.scrollHeight + 'px';
+  };
+
+  textarea.addEventListener('input', autoResize);
+  autoResize();
+
+  // Add keyboard shortcuts
+  textarea.addEventListener('keydown', (e) => {
+    if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
+      e.preventDefault();
+      saveFollowUp(diffLineIndex);
+    }
+    if (e.key === 'Escape') {
+      e.preventDefault();
+      inputBox.remove();
+    }
+  });
+}
+
+// Save follow-up to a regular comment
+function saveFollowUp(diffLineIndex) {
+  const input = document.getElementById('followupInput');
+  const text = input?.value.trim();
+
+  if (!text) {
+    showStatus('Please enter a follow-up comment', 'error');
+    return;
+  }
+
+  const comment = comments.find(c => c.file === currentFile && c.diffLineIndex === diffLineIndex);
+  if (!comment) return;
+
+  // Initialize followUps if it doesn't exist
+  if (!comment.followUps) {
+    comment.followUps = [];
+  }
+
+  comment.followUps.push({
+    text: text,
+    timestamp: new Date().toISOString()
+  });
+
+  // Auto-save to backend
+  saveCommentsToBackend();
+
+  // Update comments sidebar
+  updateCommentsSidebar();
+
+  // Reload the current file to show the follow-up
+  const fileIndex = currentFiles.findIndex(f => f.path === currentFile);
+  loadFile(currentFile, fileIndex);
+}
+
+// Add follow-up to an unmatched comment
+function addFollowUpToUnmatched(file, line, text) {
+  // Remove any existing follow-up input
+  const existingInput = document.querySelector('.followup-input-box');
+  if (existingInput) {
+    existingInput.remove();
+  }
+
+  // Find the unmatched comment element
+  const unmatchedItems = document.querySelectorAll('.unmatched-comment-item');
+  let targetItem = null;
+
+  unmatchedItems.forEach(item => {
+    const itemText = item.querySelector('.comment-text')?.textContent;
+    const itemLine = item.querySelector('.unmatched-comment-title')?.textContent;
+    if (itemText === text && itemLine?.includes(`Line ${line}`)) {
+      targetItem = item;
+    }
+  });
+
+  if (!targetItem) return;
+
+  const commentBody = targetItem.querySelector('.unmatched-comment-body');
+  if (!commentBody) return;
+
+  // Create follow-up input
+  const inputBox = document.createElement('div');
+  inputBox.className = 'followup-input-box';
+
+  // Generate unique ID for this specific input
+  const inputId = `followupInput-${Math.random().toString(36).substr(2, 9)}`;
+
+  inputBox.innerHTML = `
+    <textarea placeholder="Enter your follow-up (Cmd/Ctrl+Enter to save)..." id="${inputId}"></textarea>
+    <div class="actions">
+      <button onclick="saveFollowUpToUnmatched('${escapeHtml(file)}', ${line}, '${escapeHtml(text).replace(/'/g, "\\'")}', '${inputId}')">Add Follow-up</button>
+      <button class="cancel-btn" onclick="this.closest('.followup-input-box').remove()">Cancel</button>
+    </div>
+  `;
+
+  // Insert before the comment actions
+  const actionsDiv = commentBody.querySelector('.comment-actions');
+  if (actionsDiv) {
+    actionsDiv.before(inputBox);
+  }
+
+  const textarea = document.getElementById(inputId);
+  textarea.focus();
+
+  // Auto-resize textarea
+  const autoResize = () => {
+    textarea.style.height = 'auto';
+    textarea.style.height = textarea.scrollHeight + 'px';
+  };
+
+  textarea.addEventListener('input', autoResize);
+  autoResize();
+
+  // Add keyboard shortcuts
+  textarea.addEventListener('keydown', (e) => {
+    if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
+      e.preventDefault();
+      saveFollowUpToUnmatched(file, line, text, inputId);
+    }
+    if (e.key === 'Escape') {
+      e.preventDefault();
+      inputBox.remove();
+    }
+  });
+}
+
+// Save follow-up to an unmatched comment
+function saveFollowUpToUnmatched(file, line, text, inputId) {
+  const input = document.getElementById(inputId);
+  const followUpText = input?.value.trim();
+
+  if (!followUpText) {
+    showStatus('Please enter a follow-up comment', 'error');
+    return;
+  }
+
+  const comment = comments.find(c => c.file === file && c.line === line && c.text === text);
+  if (!comment) return;
+
+  // Initialize followUps if it doesn't exist
+  if (!comment.followUps) {
+    comment.followUps = [];
+  }
+
+  comment.followUps.push({
+    text: followUpText,
+    timestamp: new Date().toISOString()
+  });
+
+  // Auto-save to backend
+  saveCommentsToBackend();
+
+  // Update comments sidebar
+  updateCommentsSidebar();
+
+  // Reload the current file to show the follow-up
+  if (currentFile === file) {
+    const fileIndex = currentFiles.findIndex(f => f.path === file);
+    loadFile(file, fileIndex);
+  }
+}
+
 // Track command key state during selection
 let commandKeyPressed = false;
 
@@ -446,8 +681,18 @@ function handleTextSelection(e) {
   const lineNumbers = container.querySelectorAll('.line-numbers, .old-line-number, .new-line-number');
   lineNumbers.forEach(el => el.remove());
 
-  // Get the cleaned text
-  const selectedText = container.textContent.trim();
+  // Extract text from each .line-content separately to avoid extra whitespace
+  const lineContents = container.querySelectorAll('.line-content');
+  let selectedText = '';
+
+  if (lineContents.length > 0) {
+    // Get text from each line-content and join with single newlines
+    const lines = Array.from(lineContents).map(el => el.textContent);
+    selectedText = lines.join('\n').trim();
+  } else {
+    // Fallback to full textContent if no line-content elements found
+    selectedText = container.textContent.trim();
+  }
 
   if (!selectedText) {
     selection.removeAllRanges();
@@ -570,7 +815,8 @@ function saveComment(diffLineIndex, selectedText = null) {
     lineContent: lineContent,
     selectedText: selectedText,
     text: text,
-    matchType: 'exact' // New comments are exact matches
+    matchType: 'exact', // New comments are exact matches
+    followUps: [] // Initialize empty follow-ups array
   });
 
   // Auto-save to backend
