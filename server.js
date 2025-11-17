@@ -16,6 +16,8 @@ const REVIEWS_DIR = path.join(__dirname, 'reviews');
 
 // Map to store repo paths (repoId -> actual path)
 const repoPathMap = new Map();
+// Map to store repo mode (repoId -> 'working' or 'lastCommit')
+const repoModeMap = new Map();
 
 // Load local repository and get changed files
 app.post('/api/load-repo', async (req, res) => {
@@ -45,23 +47,48 @@ app.post('/api/load-repo', async (req, res) => {
     const status = await git.status();
 
     // Get all modified, new, and deleted files with their status
-    const changedFiles = [
+    let changedFiles = [
       ...status.modified.map(file => ({ path: file, status: 'M' })),
       ...status.created.map(file => ({ path: file, status: 'A' })),
       ...status.not_added.map(file => ({ path: file, status: 'A' }))
     ];
 
+    let mode = 'working';
+    let message = `Found ${changedFiles.length} changed file(s)`;
+
+    // If no working directory changes, get last commit changes
+    if (changedFiles.length === 0) {
+      try {
+        // Get diff from last commit
+        const diffSummary = await git.diffSummary(['HEAD~1', 'HEAD']);
+
+        if (diffSummary.files && diffSummary.files.length > 0) {
+          changedFiles = diffSummary.files.map(file => ({
+            path: file.file,
+            status: file.binary ? 'B' : (file.insertions > 0 && file.deletions > 0 ? 'M' : (file.insertions > 0 ? 'A' : 'D'))
+          }));
+          mode = 'lastCommit';
+          message = `No working directory changes. Loaded last commit with ${changedFiles.length} changed file(s)`;
+        }
+      } catch (commitError) {
+        console.error('Error loading last commit:', commitError);
+        // If there's an error (e.g., no commits yet), just continue with empty changedFiles
+      }
+    }
+
     // Generate unique ID for this session
     const repoId = crypto.randomBytes(8).toString('hex');
     repoPathMap.set(repoId, repoPath);
+    repoModeMap.set(repoId, mode);
 
-    console.log(`Loaded repository: ${repoPath}`);
+    console.log(`Loaded repository: ${repoPath} (mode: ${mode})`);
 
     res.json({
       repoId,
       files: changedFiles,
       repoPath,
-      message: `Found ${changedFiles.length} changed file(s)`
+      mode,
+      message
     });
 
   } catch (error) {
@@ -140,19 +167,33 @@ app.get('/api/file/:repoId/:filePath(*)', async (req, res) => {
   try {
     const { repoId, filePath } = req.params;
     const repoPath = repoPathMap.get(repoId);
+    const mode = repoModeMap.get(repoId) || 'working';
 
     if (!repoPath) {
       return res.status(400).json({ error: 'Invalid repository ID' });
     }
 
     const fullPath = path.join(repoPath, filePath);
-
-    // Get current file content
-    const content = await fs.readFile(fullPath, 'utf-8');
-
-    // Get diff for this file
     const git = simpleGit(repoPath);
-    const diffText = await git.diff(['HEAD', '--', filePath]);
+
+    let content, diffText;
+
+    if (mode === 'lastCommit') {
+      // Get file content from HEAD (last commit)
+      try {
+        content = await git.show([`HEAD:${filePath}`]);
+      } catch (err) {
+        // File might be new in last commit, try to read from filesystem
+        content = await fs.readFile(fullPath, 'utf-8').catch(() => '');
+      }
+      // Get diff from last commit
+      diffText = await git.diff(['HEAD~1', 'HEAD', '--', filePath]);
+    } else {
+      // Get current file content from working directory
+      content = await fs.readFile(fullPath, 'utf-8');
+      // Get diff for this file (working directory vs HEAD)
+      diffText = await git.diff(['HEAD', '--', filePath]);
+    }
 
     // Parse diff into structured format
     const diffLines = parseDiff(diffText, content);
@@ -173,15 +214,30 @@ app.get('/api/file-full/:repoId/:filePath(*)', async (req, res) => {
   try {
     const { repoId, filePath } = req.params;
     const repoPath = repoPathMap.get(repoId);
+    const mode = repoModeMap.get(repoId) || 'working';
 
     if (!repoPath) {
       return res.status(400).json({ error: 'Invalid repository ID' });
     }
 
     const fullPath = path.join(repoPath, filePath);
+    const git = simpleGit(repoPath);
 
-    // Get current file content
-    const content = await fs.readFile(fullPath, 'utf-8');
+    let content;
+
+    if (mode === 'lastCommit') {
+      // Get file content from HEAD (last commit)
+      try {
+        content = await git.show([`HEAD:${filePath}`]);
+      } catch (err) {
+        // File might be new in last commit, try to read from filesystem
+        content = await fs.readFile(fullPath, 'utf-8').catch(() => '');
+      }
+    } else {
+      // Get current file content from working directory
+      content = await fs.readFile(fullPath, 'utf-8');
+    }
+
     const lines = content.split('\n');
 
     res.json({
@@ -392,6 +448,7 @@ app.delete('/api/cleanup/:repoId', async (req, res) => {
   try {
     const { repoId } = req.params;
     repoPathMap.delete(repoId);
+    repoModeMap.delete(repoId);
     res.json({ message: 'Session cleaned up' });
   } catch (error) {
     console.error('Cleanup error:', error);

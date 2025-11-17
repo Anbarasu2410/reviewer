@@ -170,6 +170,17 @@ async function loadRepo() {
     if (savedComments.length > 0) {
       // Store saved comments in a global variable for matching later
       window.savedComments = savedComments;
+
+      // Add all saved comments to the comments array immediately
+      comments = savedComments.map(c => ({
+        ...c,
+        diffLineIndex: null, // Will be updated when file is loaded
+        matchType: c.matchType || 'exact'
+      }));
+
+      // Show comments sidebar immediately
+      updateCommentsSidebar();
+
       showStatus(`${data.message} - Loaded ${savedComments.length} saved comment(s)`, 'success');
     }
 
@@ -245,15 +256,25 @@ async function loadFile(filePath, index) {
     if (window.savedComments && window.savedComments.length > 0) {
       const matchedComments = matchCommentsToDiff(window.savedComments, filePath, data.diffLines);
 
-      // Add matched comments to the comments array (avoid duplicates)
+      // Update existing comments in the array with matched diff indices
       matchedComments.forEach(mc => {
-        const exists = comments.find(c =>
+        const existing = comments.find(c =>
           c.file === mc.file &&
           c.line === mc.line &&
           c.text === mc.text
         );
 
-        if (!exists) {
+        if (existing) {
+          // Update existing comment with new diff line index and match type
+          existing.diffLineIndex = mc.diffLineIndex;
+          existing.matchType = mc.matchType;
+          existing.newLineContent = mc.newLineContent;
+          // Preserve followUps from saved data
+          if (mc.followUps) {
+            existing.followUps = mc.followUps;
+          }
+        } else {
+          // Add new comment if it doesn't exist
           comments.push({
             file: mc.file,
             diffLineIndex: mc.diffLineIndex,
@@ -262,12 +283,13 @@ async function loadFile(filePath, index) {
             selectedText: mc.selectedText,
             text: mc.text,
             matchType: mc.matchType,
-            newLineContent: mc.newLineContent
+            newLineContent: mc.newLineContent,
+            followUps: mc.followUps || []
           });
         }
       });
 
-      // Update comments sidebar after adding matched comments
+      // Update comments sidebar after matching comments
       updateCommentsSidebar();
     }
 
