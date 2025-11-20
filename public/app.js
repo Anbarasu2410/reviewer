@@ -420,8 +420,8 @@ function displayCode(filePath, diffLines) {
             ${comment.selectedText ? `<div class="comment-item-selected">${escapeHtml(comment.selectedText)}</div>` : ''}
             ${unmatchedFollowUpsHtml}
             <div class="comment-actions">
-              <button class="comment-reply" onclick="addFollowUpToUnmatched('${escapeHtml(comment.file)}', ${comment.line}, '${escapeHtml(comment.text).replace(/'/g, "\\'")}')">Reply</button>
-              <button class="comment-delete" onclick="deleteUnmatchedComment('${escapeHtml(comment.file)}', ${comment.line}, '${escapeHtml(comment.text).replace(/'/g, "\\'")}')">Delete</button>
+              <button class="comment-reply" onclick="addFollowUpToUnmatched('${comment.file.replace(/'/g, "\\'")}', ${comment.line}, '${comment.text.replace(/'/g, "\\'")}')">Reply</button>
+              <button class="comment-delete" onclick="deleteUnmatchedComment('${comment.file.replace(/'/g, "\\'")}', ${comment.line}, '${comment.text.replace(/'/g, "\\'")}')">Delete</button>
             </div>
           </div>
         </div>
@@ -595,7 +595,7 @@ function addFollowUpToUnmatched(file, line, text) {
   inputBox.innerHTML = `
     <textarea placeholder="Enter your follow-up (Cmd/Ctrl+Enter to save)..." id="${inputId}"></textarea>
     <div class="actions">
-      <button onclick="saveFollowUpToUnmatched('${escapeHtml(file)}', ${line}, '${escapeHtml(text).replace(/'/g, "\\'")}', '${inputId}')">Add Follow-up</button>
+      <button onclick="saveFollowUpToUnmatched('${file.replace(/'/g, "\\'")}', ${line}, '${text.replace(/'/g, "\\'")}', '${inputId}')">Add Follow-up</button>
       <button class="cancel-btn" onclick="this.closest('.followup-input-box').remove()">Cancel</button>
     </div>
   `;
