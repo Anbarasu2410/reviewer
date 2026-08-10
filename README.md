@@ -250,6 +250,22 @@ Version 2.0 dropped the Electron wrapper. It added a few hundred megabytes and
 a per-platform build pipeline to put a browser engine around a page your
 browser already renders. See [CHANGELOG.md](CHANGELOG.md).
 
+## Contributing
+
+There is a list of [open issues](https://github.com/dheerajjha/reviewer/issues),
+including some tagged
+[good first issue](https://github.com/dheerajjha/reviewer/issues?q=is%3Aissue+is%3Aopen+label%3A%22good+first+issue%22).
+The ones most likely to change how the tool feels:
+
+- [#1](https://github.com/dheerajjha/reviewer/issues/1) — reviews are stored inside the install rather than with the repository
+- [#2](https://github.com/dheerajjha/reviewer/issues/2) — give comments a state, so a review can be worked through and marked off
+- [#3](https://github.com/dheerajjha/reviewer/issues/3) — report whether each anchor still matches the file
+- [#4](https://github.com/dheerajjha/reviewer/issues/4) — expose the review over MCP, so an agent works through it interactively
+- [#6](https://github.com/dheerajjha/reviewer/issues/6) — review a commit range, not just the working tree
+
+[CONTRIBUTING.md](CONTRIBUTING.md) covers the setup and what a good change looks
+like here.
+
 ## License
 
 [MIT](LICENSE) © Dheeraj Jha
