@@ -1,0 +1,100 @@
+# Contributing
+
+Thanks for taking the time. This is a small, dependency-light project and the
+bar for a change is simple: it should be easy to read six months from now, and
+it should come with a test that fails without it.
+
+## Getting set up
+
+```bash
+git clone https://github.com/dheerajjha/reviewer.git
+cd reviewer
+npm install
+npm test
+```
+
+`npm install` pulls Electron, which is a large download and only needed to run
+or build the desktop app. If you are working on the server or the review logic,
+`npm ci --omit=dev` is enough to run the whole test suite — that is what CI
+does.
+
+Run the app while you work:
+
+```bash
+npm run electron    # desktop app
+npm start           # web mode on http://127.0.0.1:4500
+```
+
+## Running the tests
+
+```bash
+npm test              # once
+npm run test:watch    # re-run on change
+npm run test:coverage # with coverage
+```
+
+The tests use the Node test runner, so there is no test framework to install
+and no configuration file to learn. Two kinds of test live in `test/`:
+
+- **Unit tests** for the modules in `lib/`. These are pure functions and a
+  session store; they need no fixtures and run in milliseconds.
+- **HTTP tests** in `test/server.test.js`. Each one creates a real repository in
+  a temporary directory, runs real `git` commands against it, and drives the
+  server over HTTP on an ephemeral port. Diff parsing and status mapping are
+  exactly where a stub would be wrong in the same way the code is, so they are
+  not stubbed.
+
+`test/helpers/repo.js` has the fixtures: `createTempRepo`, `writeFiles`,
+`commitFiles`, `cleanup`. Register cleanup with `t.after` so a failing test
+still removes its directory.
+
+## What a good change looks like
+
+**Put logic in `lib/`, not in a request handler.** The handlers in `server.js`
+should read as a list of steps: look up the session, do the thing, answer. If
+you find yourself writing a loop or a branch inside one, that is a sign the
+logic belongs in a module where it can be tested directly.
+
+**Write the test that fails first.** Every bug fixed in 1.1.0 has a test named
+after the symptom rather than the function — `parseDiff does not read a second
+file header as content`, `GET /api/file refuses to read outside the
+repository`. When the test name describes what a user would have noticed, the
+next person can tell at a glance whether it still matters.
+
+**Say why, not what, in comments.** The code says what it does. A comment earns
+its place by explaining the constraint that is not visible from the code — why
+a path is rejected, why a timestamp is ISO 8601, why a bucket order matters.
+
+**Keep the dependency list short.** Three runtime dependencies today. A change
+that adds a fourth should say in the pull request why the thing it does cannot
+reasonably be done without it.
+
+## Anything that touches paths
+
+The server reads files out of whatever repository the user opened, so any code
+that turns request input into a filesystem path goes through
+`resolveRepoFile()` in `lib/paths.js`. If you add an endpoint that reads a
+file, use it, and add a test that the endpoint refuses
+`..%2f..%2fetc%2fpasswd`. There is one in `test/server.test.js` to copy.
+
+## Commits and pull requests
+
+- One logical change per pull request.
+- Describe the symptom in the pull request body, not just the fix.
+- Add a `CHANGELOG.md` entry under `## [Unreleased]` for anything a user would
+  notice — a fixed bug, a new flag, a changed output format.
+- CI must be green: tests run on Linux, macOS, and Windows across Node 18, 20,
+  and 22.
+
+## Reporting a bug
+
+Open an issue with the repository state that triggered it — was the tree clean
+or dirty, was the file new, staged, deleted, renamed. Most of the interesting
+bugs in this project have been a git state nobody had tried yet.
+
+## Security
+
+If you find a way to read a file outside the opened repository, or anything
+else with a security impact, please report it privately through GitHub's
+[security advisories](https://github.com/dheerajjha/reviewer/security/advisories/new)
+rather than in a public issue.

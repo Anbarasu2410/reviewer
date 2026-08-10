@@ -1,4 +1,7 @@
-const API_BASE = 'http://localhost:4500/api';
+// Use current origin for Electron compatibility (dynamic port)
+// In web mode, this will be http://localhost:4500
+// In Electron, this will be the random port Electron assigned
+const API_BASE = `${window.location.origin}/api`;
 
 let currentRepoId = null;
 let currentFiles = [];
@@ -1425,4 +1428,20 @@ document.addEventListener('DOMContentLoaded', () => {
       navigateFiles('down');
     }
   });
+
+  // Electron integration - listen for IPC messages
+  if (window.electronAPI) {
+    // Handle "Open Repository" from menu
+    window.electronAPI.onOpenRepository((path) => {
+      document.getElementById('repoPath').value = path;
+      loadRepo();
+    });
+
+    // Handle "Submit Review" from menu
+    window.electronAPI.onSubmitReview(() => {
+      submitReview();
+    });
+
+    console.log('Electron integration enabled');
+  }
 });

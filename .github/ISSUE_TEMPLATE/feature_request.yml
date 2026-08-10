@@ -1,0 +1,37 @@
+name: Feature request
+description: Suggest something the reviewer should be able to do
+labels: [enhancement]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: What are you trying to do
+      description: >
+        Describe the review you were doing and where the tool got in the way.
+        The problem is more useful than a proposed solution — there may be a
+        simpler way to solve it.
+      placeholder: I review a stacked branch and want to see everything since I branched off main, not just the last commit.
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: What you have in mind
+      description: Optional. If you already have a shape in mind, describe it.
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: What you do instead today
+      description: The workaround you currently use, if any.
+
+  - type: checkboxes
+    id: scope
+    attributes:
+      label: Scope
+      options:
+        - label: This keeps the tool working entirely on local repositories with no account or network access
+          required: false
+        - label: I would be willing to open a pull request for this
+          required: false

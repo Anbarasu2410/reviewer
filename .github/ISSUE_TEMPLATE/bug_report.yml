@@ -1,0 +1,77 @@
+name: Bug report
+description: Something behaved differently than you expected
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Most bugs in this project turn out to be a git state nobody had tried
+        yet, so the repository state below is the most useful thing you can
+        give us.
+
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened
+      description: What you saw, and what you expected instead.
+      placeholder: Clicking a deleted file showed an empty diff instead of its removed lines.
+    validations:
+      required: true
+
+  - type: dropdown
+    id: repo-state
+    attributes:
+      label: Repository state
+      description: What did the repository look like when this happened?
+      multiple: true
+      options:
+        - Working directory had uncommitted changes
+        - Working directory was clean (reviewing the last commit)
+        - Repository had no commits yet
+        - The file was new / untracked
+        - The file was staged
+        - The file was deleted
+        - The file was renamed or moved
+        - The file was binary
+        - Not sure
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: Ideally the git commands that produce a repository showing the bug.
+      placeholder: |
+        git init repro && cd repro
+        echo one > app.js && git add -A && git commit -m first
+        rm app.js
+        # open repro in Code Reviewer, click app.js
+      render: shell
+
+  - type: dropdown
+    id: mode
+    attributes:
+      label: How were you running it?
+      options:
+        - Desktop app (npm run electron)
+        - Desktop app (packaged build)
+        - Web mode (npm start)
+    validations:
+      required: true
+
+  - type: input
+    id: versions
+    attributes:
+      label: Versions
+      description: Output of `node --version` and `git --version`, plus your OS.
+      placeholder: node v22.11.0, git 2.47.0, macOS 15.1
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Errors
+      description: Anything from the terminal, or the app's developer console (View > Toggle Developer Tools).
+      render: shell

@@ -1,0 +1,625 @@
+'use strict';
+
+const test = require('node:test');
+const assert = require('node:assert/strict');
+const fs = require('node:fs/promises');
+const os = require('node:os');
+const path = require('node:path');
+
+const { createApp } = require('../server');
+const { createTempRepo, createTempDir, writeFiles, commitFiles, cleanup, git } =
+  require('./helpers/repo');
+
+/**
+ * End-to-end coverage of the HTTP surface, against real repositories.
+ */
+
+/**
+ * Start the app on an ephemeral port with its own reviews directory.
+ *
+ * @returns {Promise<{url: string, reviewsDir: string, close: () => Promise<void>}>}
+ */
+async function startTestServer() {
+  const reviewsDir = await fs.mkdtemp(path.join(await fs.realpath(os.tmpdir()), 'reviewer-reviews-'));
+  const app = createApp({ reviewsDir });
+
+  const server = await new Promise((resolve, reject) => {
+    const listening = app.listen(0, '127.0.0.1', () => resolve(listening));
+    listening.on('error', reject);
+  });
+
+  return {
+    url: `http://127.0.0.1:${server.address().port}`,
+    reviewsDir,
+    close: async () => {
+      await new Promise(resolve => server.close(resolve));
+      await cleanup(reviewsDir);
+    }
+  };
+}
+
+/**
+ * @param {string} url
+ * @param {string} repoPath
+ * @returns {Promise<object>} the load-repo payload
+ */
+async function loadRepo(url, repoPath) {
+  const response = await fetch(`${url}/api/load-repo`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ repoPath })
+  });
+  assert.equal(response.status, 200);
+  return response.json();
+}
+
+test('GET /api/health reports the server is up', async t => {
+  const server = await startTestServer();
+  t.after(() => server.close());
+
+  const response = await fetch(`${server.url}/api/health`);
+
+  assert.equal(response.status, 200);
+  assert.deepEqual(await response.json(), { status: 'ok', sessions: 0 });
+});
+
+test('POST /api/load-repo requires a path', async t => {
+  const server = await startTestServer();
+  t.after(() => server.close());
+
+  const response = await fetch(`${server.url}/api/load-repo`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({})
+  });
+
+  assert.equal(response.status, 400);
+  assert.match((await response.json()).error, /required/i);
+});
+
+test('POST /api/load-repo rejects a path that does not exist', async t => {
+  const server = await startTestServer();
+  t.after(() => server.close());
+
+  const response = await fetch(`${server.url}/api/load-repo`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ repoPath: '/no/such/place/at/all' })
+  });
+
+  assert.equal(response.status, 400);
+  assert.match((await response.json()).error, /does not exist/i);
+});
+
+test('POST /api/load-repo rejects a directory that is not a repository', async t => {
+  const server = await startTestServer();
+  const plainDir = await createTempDir();
+  t.after(async () => {
+    await server.close();
+    await cleanup(plainDir);
+  });
+
+  const response = await fetch(`${server.url}/api/load-repo`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ repoPath: plainDir })
+  });
+
+  assert.equal(response.status, 400);
+  assert.match((await response.json()).error, /not a valid git repository/i);
+});
+
+test('POST /api/load-repo lists working directory changes', async t => {
+  const server = await startTestServer();
+  const repoPath = await createTempRepo();
+  t.after(async () => {
+    await server.close();
+    await cleanup(repoPath);
+  });
+
+  await commitFiles(repoPath, { 'app.js': 'const a = 1;\n' }, 'initial');
+  await writeFiles(repoPath, { 'app.js': 'const a = 2;\n', 'new.js': 'fresh\n' });
+
+  const body = await loadRepo(server.url, repoPath);
+
+  assert.equal(body.mode, 'working');
+  assert.match(body.message, /Found 2 changed file\(s\)/);
+  assert.deepEqual(
+    [...body.files].sort((a, b) => a.path.localeCompare(b.path)),
+    [{ path: 'app.js', status: 'M' }, { path: 'new.js', status: 'A' }]
+  );
+});
+
+test('POST /api/load-repo reports a deleted file', async t => {
+  const server = await startTestServer();
+  const repoPath = await createTempRepo();
+  t.after(async () => {
+    await server.close();
+    await cleanup(repoPath);
+  });
+
+  await commitFiles(repoPath, { 'keep.js': 'a\n', 'gone.js': 'b\n' }, 'initial');
+  await fs.rm(path.join(repoPath, 'gone.js'));
+
+  const body = await loadRepo(server.url, repoPath);
+
+  assert.deepEqual(body.files, [{ path: 'gone.js', status: 'D' }]);
+});
+
+test('POST /api/load-repo falls back to the last commit when the tree is clean', async t => {
+  const server = await startTestServer();
+  const repoPath = await createTempRepo();
+  t.after(async () => {
+    await server.close();
+    await cleanup(repoPath);
+  });
+
+  await commitFiles(repoPath, { 'app.js': 'const a = 1;\n' }, 'first');
+  await commitFiles(repoPath, { 'app.js': 'const a = 2;\n' }, 'second');
+
+  const body = await loadRepo(server.url, repoPath);
+
+  assert.equal(body.mode, 'lastCommit');
+  assert.match(body.message, /No working directory changes/);
+  assert.deepEqual(body.files, [{ path: 'app.js', status: 'M' }]);
+});
+
+test('POST /api/load-repo returns no files for a clean repository with a single commit', async t => {
+  const server = await startTestServer();
+  const repoPath = await createTempRepo();
+  t.after(async () => {
+    await server.close();
+    await cleanup(repoPath);
+  });
+
+  // There is no HEAD~1 to diff against; the request must still succeed.
+  await commitFiles(repoPath, { 'app.js': 'const a = 1;\n' }, 'only');
+
+  const body = await loadRepo(server.url, repoPath);
+
+  assert.equal(body.mode, 'working');
+  assert.deepEqual(body.files, []);
+});
+
+test('GET /api/file returns parsed diff lines', async t => {
+  const server = await startTestServer();
+  const repoPath = await createTempRepo();
+  t.after(async () => {
+    await server.close();
+    await cleanup(repoPath);
+  });
+
+  await commitFiles(repoPath, { 'app.js': 'one\ntwo\nthree\n' }, 'initial');
+  await writeFiles(repoPath, { 'app.js': 'one\nTWO\nthree\n' });
+
+  const { repoId } = await loadRepo(server.url, repoPath);
+  const response = await fetch(`${server.url}/api/file/${repoId}/app.js`);
+  const body = await response.json();
+
+  assert.equal(response.status, 200);
+  assert.equal(body.filePath, 'app.js');
+  assert.deepEqual(
+    body.diffLines.filter(line => line.type !== 'unchanged'),
+    [
+      { oldLine: 2, newLine: null, type: 'delete', content: 'two' },
+      { oldLine: null, newLine: 2, type: 'add', content: 'TWO' }
+    ]
+  );
+});
+
+test('GET /api/file shows an untracked file as wholly added', async t => {
+  const server = await startTestServer();
+  const repoPath = await createTempRepo();
+  t.after(async () => {
+    await server.close();
+    await cleanup(repoPath);
+  });
+
+  await commitFiles(repoPath, { 'app.js': 'a\n' }, 'initial');
+  await writeFiles(repoPath, { 'new.js': 'x\ny\n' });
+
+  const { repoId } = await loadRepo(server.url, repoPath);
+  const body = await (await fetch(`${server.url}/api/file/${repoId}/new.js`)).json();
+
+  assert.deepEqual(body.diffLines.map(line => line.type), ['add', 'add', 'add']);
+  assert.deepEqual(body.diffLines.map(line => line.content), ['x', 'y', '']);
+});
+
+test('GET /api/file reads a nested path', async t => {
+  const server = await startTestServer();
+  const repoPath = await createTempRepo();
+  t.after(async () => {
+    await server.close();
+    await cleanup(repoPath);
+  });
+
+  await commitFiles(repoPath, { 'src/deep/app.js': 'a\n' }, 'initial');
+  await writeFiles(repoPath, { 'src/deep/app.js': 'b\n' });
+
+  const { repoId } = await loadRepo(server.url, repoPath);
+  const response = await fetch(`${server.url}/api/file/${repoId}/src/deep/app.js`);
+
+  assert.equal(response.status, 200);
+  assert.equal((await response.json()).filePath, 'src/deep/app.js');
+});
+
+test('GET /api/file rejects an unknown session', async t => {
+  const server = await startTestServer();
+  t.after(() => server.close());
+
+  const response = await fetch(`${server.url}/api/file/deadbeef/app.js`);
+
+  assert.equal(response.status, 400);
+  assert.match((await response.json()).error, /invalid repository id/i);
+});
+
+test('GET /api/file refuses to read outside the repository', async t => {
+  const server = await startTestServer();
+  const repoPath = await createTempRepo();
+  t.after(async () => {
+    await server.close();
+    await cleanup(repoPath);
+  });
+
+  await commitFiles(repoPath, { 'app.js': 'a\n' }, 'initial');
+  const { repoId } = await loadRepo(server.url, repoPath);
+
+  // Percent-encoded so the URL parser cannot collapse the traversal before it
+  // reaches the server.
+  const escaped = '%2e%2e%2f%2e%2e%2fetc%2fpasswd';
+  for (const route of ['file', 'file-full']) {
+    const response = await fetch(`${server.url}/api/${route}/${repoId}/${escaped}`);
+    const body = await response.json();
+
+    assert.equal(response.status, 400, `${route} should refuse traversal`);
+    assert.match(body.error, /escapes the repository/i);
+    assert.ok(!('lines' in body) && !('diffLines' in body));
+  }
+});
+
+test('GET /api/file-full returns every line of the file', async t => {
+  const server = await startTestServer();
+  const repoPath = await createTempRepo();
+  t.after(async () => {
+    await server.close();
+    await cleanup(repoPath);
+  });
+
+  await commitFiles(repoPath, { 'app.js': 'one\ntwo\n' }, 'initial');
+  await writeFiles(repoPath, { 'app.js': 'one\ntwo\nthree\n' });
+
+  const { repoId } = await loadRepo(server.url, repoPath);
+  const body = await (await fetch(`${server.url}/api/file-full/${repoId}/app.js`)).json();
+
+  assert.deepEqual(body.lines, ['one', 'two', 'three', '']);
+});
+
+test('GET /api/file-full reads committed content in lastCommit mode', async t => {
+  const server = await startTestServer();
+  const repoPath = await createTempRepo();
+  t.after(async () => {
+    await server.close();
+    await cleanup(repoPath);
+  });
+
+  await commitFiles(repoPath, { 'app.js': 'first\n' }, 'first');
+  await commitFiles(repoPath, { 'app.js': 'second\n' }, 'second');
+
+  const { repoId, mode } = await loadRepo(server.url, repoPath);
+  assert.equal(mode, 'lastCommit');
+
+  const body = await (await fetch(`${server.url}/api/file-full/${repoId}/app.js`)).json();
+
+  assert.deepEqual(body.lines, ['second', '']);
+});
+
+test('comments survive a save and load round trip', async t => {
+  const server = await startTestServer();
+  const repoPath = await createTempRepo();
+  t.after(async () => {
+    await server.close();
+    await cleanup(repoPath);
+  });
+
+  await commitFiles(repoPath, { 'app.js': 'a\n' }, 'initial');
+  const { repoId } = await loadRepo(server.url, repoPath);
+
+  const comments = [{
+    file: 'app.js',
+    line: 1,
+    lineContent: 'a',
+    text: 'rename this',
+    selectedText: 'a',
+    followUps: [{ text: 'still open', timestamp: '2026-08-10T09:00:00.000Z' }],
+    clientOnlyField: 'dropped'
+  }];
+
+  const saved = await fetch(`${server.url}/api/save-comments`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ repoId, comments })
+  });
+  assert.equal(saved.status, 200);
+
+  const loaded = await (await fetch(`${server.url}/api/load-comments/${repoId}`)).json();
+
+  assert.equal(loaded.comments.length, 1);
+  assert.equal(loaded.comments[0].text, 'rename this');
+  assert.equal(loaded.comments[0].selectedText, 'a');
+  assert.deepEqual(loaded.comments[0].followUps, [
+    { text: 'still open', timestamp: '2026-08-10T09:00:00.000Z' }
+  ]);
+  assert.ok(!('clientOnlyField' in loaded.comments[0]));
+});
+
+test('GET /api/load-comments returns an empty list before anything is saved', async t => {
+  const server = await startTestServer();
+  const repoPath = await createTempRepo();
+  t.after(async () => {
+    await server.close();
+    await cleanup(repoPath);
+  });
+
+  await commitFiles(repoPath, { 'app.js': 'a\n' }, 'initial');
+  const { repoId } = await loadRepo(server.url, repoPath);
+
+  const response = await fetch(`${server.url}/api/load-comments/${repoId}`);
+
+  assert.equal(response.status, 200);
+  assert.deepEqual(await response.json(), { comments: [] });
+});
+
+test('POST /api/save-comments rejects comments that are not a list', async t => {
+  const server = await startTestServer();
+  const repoPath = await createTempRepo();
+  t.after(async () => {
+    await server.close();
+    await cleanup(repoPath);
+  });
+
+  await commitFiles(repoPath, { 'app.js': 'a\n' }, 'initial');
+  const { repoId } = await loadRepo(server.url, repoPath);
+
+  const response = await fetch(`${server.url}/api/save-comments`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ repoId, comments: 'not a list' })
+  });
+
+  assert.equal(response.status, 400);
+  assert.match((await response.json()).error, /must be an array/i);
+});
+
+test('POST /api/submit-review refuses when nothing has been saved', async t => {
+  const server = await startTestServer();
+  const repoPath = await createTempRepo();
+  t.after(async () => {
+    await server.close();
+    await cleanup(repoPath);
+  });
+
+  await commitFiles(repoPath, { 'app.js': 'a\n' }, 'initial');
+  const { repoId } = await loadRepo(server.url, repoPath);
+
+  const response = await fetch(`${server.url}/api/submit-review`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ repoId })
+  });
+
+  assert.equal(response.status, 400);
+  assert.match((await response.json()).error, /no comments found/i);
+});
+
+test('POST /api/submit-review writes a review file rendered from the saved comments', async t => {
+  const server = await startTestServer();
+  const repoPath = await createTempRepo();
+  t.after(async () => {
+    await server.close();
+    await cleanup(repoPath);
+  });
+
+  await commitFiles(repoPath, { 'app.js': 'a\n' }, 'initial');
+  const { repoId } = await loadRepo(server.url, repoPath);
+
+  await fetch(`${server.url}/api/save-comments`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      repoId,
+      comments: [
+        { file: 'app.js', line: 2, lineContent: 'b', text: 'second note' },
+        { file: 'app.js', line: 1, lineContent: 'a', text: 'first note' }
+      ]
+    })
+  });
+
+  const response = await fetch(`${server.url}/api/submit-review`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ repoId })
+  });
+  const body = await response.json();
+
+  assert.equal(response.status, 200);
+  assert.equal(body.totalComments, 2);
+  assert.match(body.filename, /^review_reviewer-test-.*\.txt$/);
+  assert.ok(body.reviewContent.indexOf('first note') < body.reviewContent.indexOf('second note'));
+
+  const onDisk = await fs.readFile(path.join(server.reviewsDir, body.filename), 'utf-8');
+  assert.equal(onDisk, body.reviewContent);
+});
+
+test('review files are written only under the configured reviews directory', async t => {
+  const server = await startTestServer();
+  const repoPath = await createTempRepo();
+  t.after(async () => {
+    await server.close();
+    await cleanup(repoPath);
+  });
+
+  await commitFiles(repoPath, { 'app.js': 'a\n' }, 'initial');
+  const { repoId } = await loadRepo(server.url, repoPath);
+
+  await fetch(`${server.url}/api/save-comments`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ repoId, comments: [{ file: 'app.js', line: 1, text: 'x' }] })
+  });
+  await fetch(`${server.url}/api/submit-review`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ repoId })
+  });
+
+  const written = await fs.readdir(server.reviewsDir);
+
+  assert.equal(written.filter(name => name.endsWith('.txt')).length, 1);
+  assert.equal(written.filter(name => name.endsWith('.json')).length, 1);
+});
+
+test('DELETE /api/cleanup ends the session', async t => {
+  const server = await startTestServer();
+  const repoPath = await createTempRepo();
+  t.after(async () => {
+    await server.close();
+    await cleanup(repoPath);
+  });
+
+  await commitFiles(repoPath, { 'app.js': 'a\n' }, 'initial');
+  const { repoId } = await loadRepo(server.url, repoPath);
+
+  const cleaned = await fetch(`${server.url}/api/cleanup/${repoId}`, { method: 'DELETE' });
+  assert.equal(cleaned.status, 200);
+
+  const afterwards = await fetch(`${server.url}/api/file/${repoId}/app.js`);
+  assert.equal(afterwards.status, 400);
+});
+
+test('DELETE /api/cleanup is safe to call twice', async t => {
+  const server = await startTestServer();
+  t.after(() => server.close());
+
+  const first = await fetch(`${server.url}/api/cleanup/never-existed`, { method: 'DELETE' });
+
+  assert.equal(first.status, 200);
+});
+
+test('two sessions review different repositories independently', async t => {
+  const server = await startTestServer();
+  const repoA = await createTempRepo();
+  const repoB = await createTempRepo();
+  t.after(async () => {
+    await server.close();
+    await cleanup(repoA);
+    await cleanup(repoB);
+  });
+
+  await commitFiles(repoA, { 'a.js': 'a\n' }, 'initial');
+  await writeFiles(repoA, { 'a.js': 'aa\n' });
+  await commitFiles(repoB, { 'b.js': 'b\n' }, 'initial');
+  await writeFiles(repoB, { 'b.js': 'bb\n' });
+
+  const sessionA = await loadRepo(server.url, repoA);
+  const sessionB = await loadRepo(server.url, repoB);
+
+  assert.notEqual(sessionA.repoId, sessionB.repoId);
+  assert.deepEqual(sessionA.files, [{ path: 'a.js', status: 'M' }]);
+  assert.deepEqual(sessionB.files, [{ path: 'b.js', status: 'M' }]);
+
+  // A path that exists in the other repository is still not readable here.
+  const crossed = await fetch(`${server.url}/api/file-full/${sessionA.repoId}/b.js`);
+  assert.equal(crossed.status, 500);
+});
+
+test('the static UI is served', async t => {
+  const server = await startTestServer();
+  t.after(() => server.close());
+
+  const response = await fetch(`${server.url}/`);
+
+  assert.equal(response.status, 200);
+  assert.match(await response.text(), /<title>Code Reviewer<\/title>/);
+});
+
+test('a renamed file is listed under its new path', async t => {
+  const server = await startTestServer();
+  const repoPath = await createTempRepo();
+  t.after(async () => {
+    await server.close();
+    await cleanup(repoPath);
+  });
+
+  await commitFiles(repoPath, { 'old.js': 'const value = 1;\n'.repeat(10) }, 'initial');
+  await git(repoPath, ['mv', 'old.js', 'new.js']);
+  await git(repoPath, ['add', '-A']);
+
+  const body = await loadRepo(server.url, repoPath);
+
+  assert.ok(body.files.some(file => file.path === 'new.js'), `got ${JSON.stringify(body.files)}`);
+});
+
+test('a repository with no commits at all loads without error', async t => {
+  const server = await startTestServer();
+  const repoPath = await createTempRepo();
+  t.after(async () => {
+    await server.close();
+    await cleanup(repoPath);
+  });
+
+  await writeFiles(repoPath, { 'app.js': 'a\n' });
+
+  const body = await loadRepo(server.url, repoPath);
+
+  assert.deepEqual(body.files, [{ path: 'app.js', status: 'A' }]);
+});
+
+test('a file in a repository with no commits is diffed as wholly added', async t => {
+  const server = await startTestServer();
+  const repoPath = await createTempRepo();
+  t.after(async () => {
+    await server.close();
+    await cleanup(repoPath);
+  });
+
+  await writeFiles(repoPath, { 'app.js': 'x\ny\n' });
+  const { repoId } = await loadRepo(server.url, repoPath);
+
+  const response = await fetch(`${server.url}/api/file/${repoId}/app.js`);
+  const body = await response.json();
+
+  assert.equal(response.status, 200);
+  assert.deepEqual(body.diffLines.map(line => line.content), ['x', 'y', '']);
+});
+
+test('an empty commit history plus a staged file still reports the file', async t => {
+  const server = await startTestServer();
+  const repoPath = await createTempRepo();
+  t.after(async () => {
+    await server.close();
+    await cleanup(repoPath);
+  });
+
+  await writeFiles(repoPath, { 'app.js': 'a\n' });
+  await git(repoPath, ['add', 'app.js']);
+
+  const body = await loadRepo(server.url, repoPath);
+
+  assert.deepEqual(body.files, [{ path: 'app.js', status: 'A' }]);
+});
+
+test('session count is reflected in the health probe', async t => {
+  const server = await startTestServer();
+  const repoPath = await createTempRepo();
+  t.after(async () => {
+    await server.close();
+    await cleanup(repoPath);
+  });
+
+  await commitFiles(repoPath, { 'app.js': 'a\n' }, 'initial');
+  await loadRepo(server.url, repoPath);
+
+  const health = await (await fetch(`${server.url}/api/health`)).json();
+
+  assert.equal(health.sessions, 1);
+});

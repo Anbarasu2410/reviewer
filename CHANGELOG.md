@@ -1,0 +1,89 @@
+# Changelog
+
+All notable changes to this project are documented here. The format follows
+[Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project
+adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+
+## [Unreleased]
+
+## [1.1.0] - 2026-08-10
+
+The first release with a test suite. The behaviour of the app is unchanged for
+anyone using it the way it was already used; everything below is either a bug
+that could bite you or a change to a file the app writes.
+
+### Added
+
+- **A test suite.** 90 tests covering diff parsing, path confinement, git
+  status mapping, comment normalization, review rendering, session handling,
+  and the full HTTP surface. The HTTP tests run against real repositories
+  created with real `git`, because diff parsing is exactly the place where a
+  stub would be wrong in the same way the code is. Run them with `npm test` —
+  no dependencies beyond what the app already ships, using the Node test
+  runner.
+- **CI on every push and pull request** across Linux, macOS, and Windows on
+  Node 18, 20, and 22.
+- **`GET /api/health`.** The desktop shell now polls it to know the server is
+  ready.
+- **A `HOST` environment variable**, for deliberately exposing the web mode
+  beyond loopback.
+
+### Fixed
+
+- **Opening a repository with no commits no longer fails with a 500.**
+  Clicking any file in a freshly `git init`ed repository ran `git diff HEAD`
+  against an unborn HEAD and returned a server error. Such a file is now shown
+  as wholly new, which is what it is.
+- **Deleted files appear in the review.** Working-directory deletions were
+  dropped from the changed-file list entirely, so a removed file could not be
+  commented on. Deletions (`D`) and renames (`R`) are now listed.
+- **A file claimed by two git buckets is listed once.** A file that was staged
+  and then edited again appeared twice in the sidebar.
+- **The diff parser no longer reads a second file's header as content.** Given
+  multi-file diff text, the `---`/`+++` lines of every file after the first
+  were parsed as deleted and added lines.
+- **The desktop app starts reliably.** Readiness was inferred by matching a
+  string in the server's stdout, with a 10-second timer that resolved anyway —
+  so a server that failed to start showed an empty window. The shell now polls
+  `/api/health` and fails loudly if the process dies.
+- **The packaged desktop app starts at all.** It spawned `node` from `PATH`,
+  which a packaged app cannot rely on; it now runs the server under Electron's
+  own binary.
+- **`package-lock.json` resolves to `registry.npmjs.org`.** Every entry pointed
+  at a private Artifactory host that required authentication, so `npm install`
+  failed for everyone outside that network. CI now fails if this recurs.
+
+### Changed
+
+- **The server binds to `127.0.0.1` by default** instead of every interface.
+  It serves the contents of the repository under review, so reaching it should
+  require being on the machine running it. Set `HOST=0.0.0.0` to opt out.
+- **Follow-up timestamps in a submitted review are ISO 8601** rather than the
+  server's locale format. A review gets committed and read on other machines;
+  its shape should not depend on the reader.
+- **Review filenames sanitize the repository name.** A repository directory can
+  be named anything the filesystem allows, and that name went straight into a
+  path.
+- **Code snippets in a review are fenced with a wider fence when they contain
+  one**, so a Markdown file under review no longer closes the block early and
+  renders the rest of the review as prose.
+- **`server.js` exports `createApp()` and `startServer()`** and only listens
+  when run directly. Requiring it no longer binds a port.
+- Logic moved out of the request handlers into `lib/`: `diff.js`, `paths.js`,
+  `changes.js`, `comments.js`, `review.js`, `sessions.js`.
+
+### Security
+
+- **The file endpoints no longer read outside the repository.** `filePath`
+  came straight from the URL and was joined onto the repository path, so
+  `GET /api/file/:repoId/..%2f..%2fetc%2fpasswd` returned that file. Requests
+  that resolve outside the opened repository are now refused with a 400.
+
+## [1.0.0]
+
+Initial release: Electron desktop app and web mode for reviewing local git
+changes with inline comments, threaded follow-ups, persistent storage, and a
+GitHub-style diff view.
+
+[Unreleased]: https://github.com/dheerajjha/reviewer/compare/v1.1.0...HEAD
+[1.1.0]: https://github.com/dheerajjha/reviewer/releases/tag/v1.1.0

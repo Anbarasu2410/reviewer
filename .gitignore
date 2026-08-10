@@ -1,5 +1,21 @@
+# Dependencies
 node_modules/
-repos/
+
+# Build output
+dist/
+build/
+
+# Review state written at runtime
 reviews/
+repos/
+
+# Editor and OS cruft
 .DS_Store
+.specstory/
+.idea/
+.vscode/
+*.swp
+
+# Logs
 *.log
+npm-debug.log*
