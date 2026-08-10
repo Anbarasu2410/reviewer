@@ -516,8 +516,57 @@ test('review files are written only under the configured reviews directory', asy
 
   const written = await fs.readdir(server.reviewsDir);
 
+  // The human-readable review, the machine-readable one beside it, and the
+  // live comment state — and nothing outside this directory.
   assert.equal(written.filter(name => name.endsWith('.txt')).length, 1);
-  assert.equal(written.filter(name => name.endsWith('.json')).length, 1);
+  assert.equal(written.filter(name => name.startsWith('review_') && name.endsWith('.json')).length, 1);
+  assert.equal(written.filter(name => name.startsWith('.code-review-comments-')).length, 1);
+  assert.equal(written.length, 3);
+});
+
+test('submitting also writes a machine-readable review beside the text one', async t => {
+  const server = await startTestServer();
+  const repoPath = await createTempRepo();
+  t.after(async () => {
+    await server.close();
+    await cleanup(repoPath);
+  });
+
+  await commitFiles(repoPath, { 'app.js': 'const a = 1;\n' }, 'initial');
+  const { repoId } = await loadRepo(server.url, repoPath);
+
+  await fetch(`${server.url}/api/save-comments`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      repoId,
+      comments: [{ file: 'app.js', line: 1, lineContent: 'const a = 1;', text: 'name it' }]
+    })
+  });
+
+  const body = await (await fetch(`${server.url}/api/submit-review`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ repoId })
+  })).json();
+
+  assert.equal(body.documentFilename, body.filename.replace(/\.txt$/, '.json'));
+  assert.equal(body.review.schema, 'code-review/v1');
+  assert.match(body.review.repository.head, /^[0-9a-f]{40}$/);
+  assert.equal(body.review.repository.branch, 'main');
+  assert.equal(body.review.mode, 'working');
+  assert.deepEqual(body.review.comments, [{
+    id: 'app.js:1',
+    file: 'app.js',
+    line: 1,
+    anchor: 'const a = 1;',
+    body: 'name it'
+  }]);
+
+  const onDisk = JSON.parse(
+    await fs.readFile(path.join(server.reviewsDir, body.documentFilename), 'utf-8')
+  );
+  assert.deepEqual(onDisk, body.review);
 });
 
 test('DELETE /api/cleanup ends the session', async t => {

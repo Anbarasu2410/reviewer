@@ -3,32 +3,64 @@
 [![CI](https://github.com/dheerajjha/reviewer/actions/workflows/ci.yml/badge.svg)](https://github.com/dheerajjha/reviewer/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![Node](https://img.shields.io/badge/node-%3E%3D18-brightgreen.svg)](package.json)
-[![Tests](https://img.shields.io/badge/tests-93-brightgreen.svg)](test/)
+[![Tests](https://img.shields.io/badge/tests-142-brightgreen.svg)](test/)
+[![Dependencies](https://img.shields.io/badge/dependencies-3-brightgreen.svg)](package.json)
 
 ![Plain grey code lines on the left resolving into colored diff stripes, with threaded comment markers attached in the right margin](docs/banner.jpg)
 
 Review code before it becomes a pull request. `reviewer` opens any local git
-repository, shows what changed, and lets you leave inline comments with
-threaded follow-ups — against your working directory, without a branch, a
-remote, a push, or an account. Comments persist between sessions and survive
-the code moving underneath them, so you can review, edit, and come back
+repository in your browser, shows what changed, and lets you leave inline
+comments with threaded follow-ups — against your working directory, without a
+branch, a remote, a push, or an account. Comments persist between sessions and
+survive the code moving underneath them, so you can review, edit, and come back
 tomorrow to a review that still points at the right lines. When you are done it
 writes a plain Markdown file you can paste anywhere.
 
-It runs as a desktop app, or as a local web server if you prefer a browser.
-
 ```bash
-git clone https://github.com/dheerajjha/reviewer.git
-cd reviewer && npm install
-npm run electron
+cd ~/work/my-app
+npx github:dheerajjha/reviewer .
 ```
 
-Then `File > Open Repository` (`Cmd/Ctrl+O`) and pick any git repository.
+That starts a local server and opens your browser on the repository you named.
+There is nothing to install into the project, nothing to sign in to, and
+nothing leaves your machine.
 
 ![The app reviewing a modified file: changed files on the left, a colour-coded diff in the middle with an inline comment and a threaded follow-up attached to line 10, and a comments sidebar on the right](docs/screenshot-comments.png)
 
 Click a line number, write the note, keep going. Replies thread under the
 comment they answer, and everything is saved as you type.
+
+## Usage
+
+```
+reviewer [repository] [options]
+reviewer export [repository] [--format json|prompt]
+
+  repository        Path to a git repository (default: the current directory)
+
+  -p, --port <n>    Port to listen on (default 4500; falls back to a free
+                    port if that one is taken)
+      --no-open     Print the URL instead of opening a browser
+  -f, --format <f>  Export format: json (default) or prompt
+  -h, --help        Show help
+  -v, --version     Show the version
+```
+
+```bash
+reviewer                    # review the repository you are standing in
+reviewer ~/work/api         # review another one
+reviewer . --no-open        # print the URL, open it yourself
+reviewer . --port 8080      # somewhere other than 4500
+```
+
+Two at once is fine — the second one finds its own port.
+
+To install it as a command rather than running it through `npx`:
+
+```bash
+git clone https://github.com/dheerajjha/reviewer.git
+cd reviewer && npm install && npm link
+```
 
 ## What it shows you
 
@@ -56,12 +88,10 @@ shown in full, read back out of `HEAD`:
 | Comment on a snippet | Hold `Cmd/Ctrl`, select code, then click the line number |
 | Reply to a comment | Click **Reply** on it |
 | Edit or delete | Hover the comment |
-| Finish the review | **Submit Review**, or `Cmd/Ctrl+S` |
+| Finish the review | Click **Submit Review** |
 
 | Shortcut | Action |
 |---|---|
-| `Cmd/Ctrl+O` | Open repository |
-| `Cmd/Ctrl+S` | Submit review |
 | `Cmd/Ctrl+Enter` | Save the comment being written |
 | `Escape` | Cancel input |
 | `↑` / `↓` | Move between files |
@@ -104,18 +134,43 @@ Submitting shows you exactly what was written, ready to download or copy:
 
 ![The Review Submitted dialog showing the rendered Markdown review, with a download button naming the file review_api-service_2026-08-10_17-40-48-989Z.txt](docs/screenshot-review.png)
 
-## Web mode
+## Handing the review to a coding agent
+
+A review is only half the work; applying it is the other half. `reviewer
+export` prints the review you saved — no server, no submit step — either as
+JSON or as instructions ready to pipe:
 
 ```bash
-npm start                 # http://127.0.0.1:4500
-PORT=8080 npm start       # somewhere else
+reviewer export . --format prompt | claude -p "Apply this review to the repo."
+reviewer export . | jq '.comments[].file'
 ```
 
-Enter a repository path in the header and load it.
+Every comment carries an `anchor`: the exact text of the line it was left on.
+Line numbers go stale the moment an agent makes its first edit, because
+everything below shifts — so the anchor is what lets a comment still be found.
+The prompt format says so to the agent explicitly, and tells it to report
+rather than guess when an anchor has vanished.
 
-The server binds to loopback. It serves the contents of whatever repository you
-open, so reaching it should require being on the machine running it — set
-`HOST=0.0.0.0` only if you mean it.
+```json
+{
+  "schema": "code-review/v1",
+  "repository": { "path": "/work/api-service", "head": "abe3b37", "branch": "main" },
+  "summary": { "comments": 2, "files": 1 },
+  "comments": [
+    {
+      "id": "src/auth.js:10",
+      "file": "src/auth.js",
+      "line": 10,
+      "anchor": "  if (scheme !== SCHEME || !token) return null;",
+      "body": "Reject an empty token too.",
+      "followUps": [{ "body": "Still open after the rebase", "at": "2026-08-10T14:00:00.000Z" }]
+    }
+  ]
+}
+```
+
+Submitting in the UI writes this alongside the `.txt`. The full schema is in
+[docs/agent-format.md](docs/agent-format.md).
 
 ## HTTP API
 
@@ -133,30 +188,46 @@ The UI is a client of this; nothing is hidden from you.
 | `DELETE /api/cleanup/:repoId` | End the session; files on disk are untouched |
 
 A `repoId` is a random per-session handle, not a path. Requests that resolve
-outside the opened repository are refused.
+outside the opened repository are refused, and a path that names nothing gets a
+404.
+
+`npm run serve` starts the server on its own, without opening a browser.
+
+## Security
+
+The server binds to `127.0.0.1`. It reads any file in the repository you
+opened, so reaching it should require being on the machine running it — set
+`HOST=0.0.0.0` only if you mean it. Every path that reaches the filesystem is
+resolved through a check that it lands inside that repository, so a request for
+`..%2f..%2fetc%2fpasswd` is refused rather than served.
+
+If you find a way past that, please report it through
+[security advisories](https://github.com/dheerajjha/reviewer/security/advisories/new)
+rather than a public issue.
 
 ## Development
 
 ```bash
-npm install
-npm test              # 93 tests
+npm install           # 3 dependencies, no build step, ~6MB
+npm test              # 142 tests
 npm run test:watch
 npm run test:coverage
 ```
 
 ```
-main.js       Electron main process — window, menu, server lifecycle
-preload.js    Context-isolated IPC bridge
-server.js     Express app factory and routes
+bin/reviewer.js  the command: parse args, start server, open browser
+server.js        Express app factory and routes
 lib/
-  diff.js       unified diff -> structured lines
-  paths.js      confines request paths to the repository
-  changes.js    git status and commit summaries -> changed files
-  comments.js   the persisted comment shape
-  review.js     rendering and naming review files
-  sessions.js   repoId -> repository
-public/       UI: index.html, style.css, app.js
-test/         Node test runner; HTTP tests drive real git repositories
+  cli.js           argument parsing and URL building
+  browser.js       opening a URL on each platform
+  diff.js          unified diff -> structured lines
+  paths.js         confines request paths to the repository
+  changes.js       git status and commit summaries -> changed files
+  comments.js      the persisted comment shape
+  review.js        rendering and naming review files
+  sessions.js      repoId -> repository
+public/          UI: index.html, style.css, app.js
+test/            Node test runner; HTTP tests drive real git repositories
 ```
 
 The request handlers hold no logic worth testing — it lives in `lib/`, and
@@ -168,35 +239,16 @@ parsing is exactly where a stub would be wrong in the same way the code is.
 Tests run on Linux, macOS, and Windows across Node 18, 20, and 22. See
 [CONTRIBUTING.md](CONTRIBUTING.md).
 
-## Building the desktop app
-
-```bash
-npm run build         # current platform
-npm run build:mac     # universal DMG + ZIP
-npm run build:win     # NSIS + portable
-npm run build:linux   # AppImage + DEB
-```
-
-Output lands in `dist/`. macOS signing and notarization need an Apple Developer
-certificate; Windows and Linux builds need nothing extra.
-
-## Security
-
-The desktop shell follows Electron's guidance — context isolation on, node
-integration off, IPC through a preload bridge, no remote module, external links
-opened in the real browser. The server binds to loopback, and every path that
-reaches the filesystem is resolved through a check that it lands inside the
-opened repository.
-
-If you find a way past that, please report it through
-[security advisories](https://github.com/dheerajjha/reviewer/security/advisories/new)
-rather than a public issue.
-
 ## Tech
 
-Electron, Express, [simple-git](https://github.com/steveukx/git-js), and vanilla
-JavaScript in the browser. Three runtime dependencies, no build step for the
-frontend, no test framework — the tests use the one built into Node.
+Express, [simple-git](https://github.com/steveukx/git-js), and vanilla
+JavaScript in the browser. Three runtime dependencies, no dev dependencies, no
+build step for the frontend, no test framework — the tests use the one built
+into Node.
+
+Version 2.0 dropped the Electron wrapper. It added a few hundred megabytes and
+a per-platform build pipeline to put a browser engine around a page your
+browser already renders. See [CHANGELOG.md](CHANGELOG.md).
 
 ## License
 

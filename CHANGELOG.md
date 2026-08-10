@@ -6,6 +6,57 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [2.0.0] - 2026-08-10
+
+Dropped the Electron wrapper. It added a few hundred megabytes and a
+per-platform build pipeline in order to put a browser engine around a page your
+browser already renders. `reviewer` is now a command that starts a local server
+and opens a tab.
+
+### Removed
+
+- **The Electron desktop app**, along with `main.js`, `preload.js`, the
+  `electron-builder` configuration, and the `build:mac` / `build:win` /
+  `build:linux` scripts. There is nothing to package and nothing to sign.
+- **Both dev dependencies.** The project now installs three runtime packages,
+  about 6MB, in a couple of seconds.
+- **`Cmd/Ctrl+O` and `Cmd/Ctrl+S`**, which were native menu accelerators with
+  no browser equivalent. Opening a repository is an argument or the header
+  field; submitting is the button. The in-page shortcuts (`Cmd/Ctrl+Enter`,
+  `Escape`, `↑`/`↓`) are unchanged.
+
+### Added
+
+- **A `reviewer` command.** `reviewer [repository]` starts the server and opens
+  a browser on that repository, which loads without anyone typing a path.
+  `--port` chooses a port and falls back to a free one if it is taken, so two
+  reviews at once just work; `--no-open` prints the URL instead.
+- **`reviewer export`** — the review as machine-readable output, for handing to
+  a coding agent once the review is done:
+
+  ```bash
+  reviewer export . --format prompt | claude -p "Apply this review to the repo."
+  ```
+
+  Every comment carries an `anchor`, the exact text of the line it was left on.
+  Line numbers go stale the moment an agent makes its first edit, since
+  everything below shifts; the anchor is what survives. The `prompt` format
+  states this to the agent and tells it to report, not guess, when an anchor has
+  vanished. Schema `code-review/v1` is documented in
+  [docs/agent-format.md](docs/agent-format.md).
+
+- **Submitting a review also writes the machine-readable form** beside the
+  `.txt`, as `reviews/review_<repo>_<timestamp>.json`, and returns it from
+  `POST /api/submit-review` as `review`.
+- **A favicon**, so loading the page no longer logs a 404.
+
+### Changed
+
+- `npm start` runs the command; `npm run serve` starts the bare server without
+  opening anything.
+- The package exposes a `reviewer` binary and ships only `bin/`, `lib/`,
+  `public/`, and `server.js`.
+
 ## [1.1.0] - 2026-08-10
 
 The first release with a test suite. The behaviour of the app is unchanged for
@@ -46,7 +97,6 @@ that could bite you or a change to a file the app writes.
   buttons pinned top-right.
 - **A path that names nothing answers 404** rather than 500 or, worse, an empty
   file.
-- **The UI has a favicon**, so loading it no longer logs a 404.
 - **A file claimed by two git buckets is listed once.** A file that was staged
   and then edited again appeared twice in the sidebar.
 - **The diff parser no longer reads a second file's header as content.** Given
@@ -95,5 +145,6 @@ Initial release: Electron desktop app and web mode for reviewing local git
 changes with inline comments, threaded follow-ups, persistent storage, and a
 GitHub-style diff view.
 
-[Unreleased]: https://github.com/dheerajjha/reviewer/compare/v1.1.0...HEAD
+[Unreleased]: https://github.com/dheerajjha/reviewer/compare/v2.0.0...HEAD
+[2.0.0]: https://github.com/dheerajjha/reviewer/releases/tag/v2.0.0
 [1.1.0]: https://github.com/dheerajjha/reviewer/releases/tag/v1.1.0

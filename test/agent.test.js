@@ -1,0 +1,162 @@
+'use strict';
+
+const test = require('node:test');
+const assert = require('node:assert/strict');
+
+const { buildReviewDocument, formatPrompt, SCHEMA } = require('../lib/agent');
+
+const AT = new Date('2026-08-10T12:30:45.678Z');
+
+const COMMENTS = [
+  {
+    file: 'src/auth.js',
+    line: 10,
+    lineContent: '  if (scheme !== SCHEME) return null;',
+    text: 'Reject an empty token too.',
+    followUps: [{ text: 'Still open', timestamp: '2026-08-10T14:00:00.000Z' }]
+  },
+  { file: 'src/auth.js', line: 2, lineContent: 'const A = 1;', text: 'Name this.' },
+  { file: 'src/cache.js', line: 5, lineContent: 'store.clear();', text: 'Why here?' }
+];
+
+/** @returns {import('../lib/agent').ReviewDocument} */
+function build(comments = COMMENTS, extra = {}) {
+  return buildReviewDocument({
+    repoPath: '/work/api-service',
+    comments,
+    generatedAt: AT,
+    ...extra
+  });
+}
+
+test('buildReviewDocument stamps the schema and generation time', () => {
+  const document = build();
+
+  assert.equal(document.schema, SCHEMA);
+  assert.equal(document.generatedAt, '2026-08-10T12:30:45.678Z');
+});
+
+test('buildReviewDocument records the repository and the commit reviewed', () => {
+  const document = build(COMMENTS, { head: 'abc1234', branch: 'main', mode: 'working' });
+
+  assert.deepEqual(document.repository, {
+    path: '/work/api-service',
+    name: 'api-service',
+    head: 'abc1234',
+    branch: 'main'
+  });
+  assert.equal(document.mode, 'working');
+});
+
+test('buildReviewDocument leaves the commit null when git would not say', () => {
+  const document = build();
+
+  assert.equal(document.repository.head, null);
+  assert.equal(document.repository.branch, null);
+});
+
+test('buildReviewDocument counts comments and the files they touch', () => {
+  assert.deepEqual(build().summary, { comments: 3, files: 2 });
+});
+
+test('buildReviewDocument groups by file and orders by line', () => {
+  const document = build();
+
+  assert.deepEqual(document.comments.map(comment => comment.id), [
+    'src/auth.js:2',
+    'src/auth.js:10',
+    'src/cache.js:5'
+  ]);
+});
+
+test('every comment carries the source line as an anchor', () => {
+  // The anchor is the whole point: an agent's own edits shift line numbers, so
+  // the text of the line is what survives to locate the comment again.
+  const document = build();
+
+  assert.equal(document.comments[1].anchor, '  if (scheme !== SCHEME) return null;');
+});
+
+test('a comment with no recorded line content has a null anchor', () => {
+  const document = build([{ file: 'a.js', line: 1, text: 'x' }]);
+
+  assert.equal(document.comments[0].anchor, null);
+});
+
+test('follow-ups are carried across, with their timestamps', () => {
+  const document = build();
+  const withFollowUp = document.comments.find(comment => comment.id === 'src/auth.js:10');
+
+  assert.deepEqual(withFollowUp.followUps, [
+    { body: 'Still open', at: '2026-08-10T14:00:00.000Z' }
+  ]);
+});
+
+test('optional fields are omitted rather than null', () => {
+  const document = build([{ file: 'a.js', line: 1, lineContent: 'x', text: 'y' }]);
+
+  assert.ok(!('selection' in document.comments[0]));
+  assert.ok(!('followUps' in document.comments[0]));
+});
+
+test('a highlighted selection is carried across', () => {
+  const document = build([
+    { file: 'a.js', line: 1, lineContent: 'x', text: 'y', selectedText: 'const a = 1' }
+  ]);
+
+  assert.equal(document.comments[0].selection, 'const a = 1');
+});
+
+test('the document round-trips through JSON unchanged', () => {
+  // It is written to a file and read by another process; nothing in it may
+  // depend on being the same objects.
+  const document = build(COMMENTS, { head: 'abc', branch: 'main' });
+
+  assert.deepEqual(JSON.parse(JSON.stringify(document)), document);
+});
+
+test('formatPrompt leads with the instruction before the data', () => {
+  const prompt = formatPrompt(build());
+
+  assert.match(prompt, /^# Code review to address/);
+  assert.ok(
+    prompt.indexOf('Work through every comment') < prompt.indexOf('src/auth.js:2'),
+    'the instruction must come before the comments it governs'
+  );
+});
+
+test('formatPrompt tells the agent to locate comments by anchor, not line number', () => {
+  const prompt = formatPrompt(build());
+
+  assert.match(prompt, /locate each comment by its `anchor` line/);
+  assert.match(prompt, /Anchor line:/);
+});
+
+test('formatPrompt includes every comment body and follow-up', () => {
+  const prompt = formatPrompt(build());
+
+  for (const expected of ['Reject an empty token too.', 'Name this.', 'Why here?', 'Still open']) {
+    assert.ok(prompt.includes(expected), `prompt should contain ${expected}`);
+  }
+});
+
+test('formatPrompt writes one heading per file', () => {
+  const prompt = formatPrompt(build());
+  const headings = prompt.match(/^## .+$/gm);
+
+  assert.deepEqual(headings, ['## src/auth.js', '## src/cache.js']);
+});
+
+test('formatPrompt reports the commit when there is one', () => {
+  assert.match(formatPrompt(build(COMMENTS, { head: 'abc1234' })), /Reviewed at commit: abc1234/);
+  assert.doesNotMatch(formatPrompt(build()), /Reviewed at commit/);
+});
+
+test('formatPrompt handles a review with a single comment and no extras', () => {
+  const prompt = formatPrompt(build([{ file: 'a.js', line: 1, text: 'fix' }]));
+
+  assert.match(prompt, /1 comment\(s\) across 1 file\(s\)/);
+  assert.match(prompt, /fix/);
+  assert.doesNotMatch(prompt, /Selected code/);
+  assert.doesNotMatch(prompt, /Follow-ups/);
+});

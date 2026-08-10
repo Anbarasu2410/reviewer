@@ -12,9 +12,13 @@ const { collectWorkingChanges, collectCommitChanges } = require('./lib/changes')
 const { SessionStore } = require('./lib/sessions');
 const { normalizeComments } = require('./lib/comments');
 const { formatReview, reviewFilename, commentsFilename } = require('./lib/review');
+const { buildReviewDocument } = require('./lib/agent');
 
 const DEFAULT_PORT = 4500;
 const DEFAULT_HOST = '127.0.0.1';
+
+/** Where comment state and submitted reviews are written. */
+const REVIEWS_DIR = path.join(__dirname, 'reviews');
 
 /** A path inside the repository that names nothing, on disk or at HEAD. */
 class FileNotFoundError extends Error {
@@ -41,7 +45,7 @@ class FileNotFoundError extends Error {
  */
 function createApp(options = {}) {
   const {
-    reviewsDir = path.join(__dirname, 'reviews'),
+    reviewsDir = REVIEWS_DIR,
     sessions = new SessionStore(),
     git: gitFactory = simpleGit
   } = options;
@@ -152,7 +156,7 @@ function createApp(options = {}) {
     return git.diff(['HEAD', '--', filePath]);
   }
 
-  /** Liveness probe. The desktop shell polls this to know the server is up. */
+  /** Liveness probe, and a count of how many repositories are open. */
   app.get('/api/health', (req, res) => {
     res.json({ status: 'ok', sessions: sessions.size });
   });
@@ -336,8 +340,30 @@ function createApp(options = {}) {
       const reviewContent = formatReview({ repoPath: session.repoPath, comments, generatedAt });
       const filename = reviewFilename(session.repoPath, generatedAt);
 
+      // The commit is worth recording for anything acting on the review later:
+      // it is how a consumer tells whether the tree has moved on since.
+      const git = gitFactory(session.repoPath);
+      const head = await git.revparse(['HEAD']).then(sha => sha.trim()).catch(() => null);
+      const branch = await git.revparse(['--abbrev-ref', 'HEAD']).then(name => name.trim()).catch(() => null);
+
+      const document = buildReviewDocument({
+        repoPath: session.repoPath,
+        comments,
+        generatedAt,
+        head,
+        branch,
+        mode: session.mode
+      });
+      const documentFilename = filename.replace(/\.txt$/, '.json');
+
       await fs.mkdir(reviewsDir, { recursive: true });
       await fs.writeFile(path.join(reviewsDir, filename), reviewContent);
+      // Written alongside the .txt so a review is available to a tool without
+      // anyone having to re-run anything.
+      await fs.writeFile(
+        path.join(reviewsDir, documentFilename),
+        `${JSON.stringify(document, null, 2)}\n`
+      );
 
       console.log(`Review generated: ${filename} (${comments.length} comments)`);
 
@@ -345,6 +371,8 @@ function createApp(options = {}) {
         message: 'Review submitted successfully',
         reviewContent,
         filename,
+        documentFilename,
+        review: document,
         totalComments: comments.length
       });
     } catch (error) {
@@ -376,13 +404,16 @@ function startServer(options = {}) {
   const {
     port = process.env.PORT || DEFAULT_PORT,
     host = process.env.HOST || DEFAULT_HOST,
+    silent = false,
     ...appOptions
   } = options;
   const app = createApp(appOptions);
 
   return new Promise((resolve, reject) => {
     const server = app.listen(port, host, () => {
-      console.log(`Code Reviewer server running on http://${host}:${server.address().port}`);
+      if (!silent) {
+        console.log(`Code Reviewer server running on http://${host}:${server.address().port}`);
+      }
       resolve(server);
     });
     server.on('error', reject);
@@ -397,4 +428,4 @@ if (require.main === module) {
   });
 }
 
-module.exports = { createApp, startServer, DEFAULT_PORT, DEFAULT_HOST };
+module.exports = { createApp, startServer, DEFAULT_PORT, DEFAULT_HOST, REVIEWS_DIR };

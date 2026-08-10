@@ -54,9 +54,11 @@ body:
     attributes:
       label: How were you running it?
       options:
-        - Desktop app (npm run electron)
-        - Desktop app (packaged build)
-        - Web mode (npm start)
+        - reviewer (the command)
+        - npx github:dheerajjha/reviewer
+        - npm start
+        - npm run serve
+        - reviewer export
     validations:
       required: true
 

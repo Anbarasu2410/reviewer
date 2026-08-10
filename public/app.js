@@ -1429,19 +1429,11 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   });
 
-  // Electron integration - listen for IPC messages
-  if (window.electronAPI) {
-    // Handle "Open Repository" from menu
-    window.electronAPI.onOpenRepository((path) => {
-      document.getElementById('repoPath').value = path;
-      loadRepo();
-    });
-
-    // Handle "Submit Review" from menu
-    window.electronAPI.onSubmitReview(() => {
-      submitReview();
-    });
-
-    console.log('Electron integration enabled');
+  // `reviewer /path/to/repo` opens the page with the repository in the query
+  // string, so the review is on screen without anyone typing a path.
+  const requestedRepo = new URLSearchParams(window.location.search).get('repo');
+  if (requestedRepo) {
+    document.getElementById('repoPath').value = requestedRepo;
+    loadRepo();
   }
 });

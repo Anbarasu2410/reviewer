@@ -13,16 +13,14 @@ npm install
 npm test
 ```
 
-`npm install` pulls Electron, which is a large download and only needed to run
-or build the desktop app. If you are working on the server or the review logic,
-`npm ci --omit=dev` is enough to run the whole test suite — that is what CI
-does.
+There are three runtime dependencies and no dev dependencies, so this is a
+small, fast install with no build step.
 
 Run the app while you work:
 
 ```bash
-npm run electron    # desktop app
-npm start           # web mode on http://127.0.0.1:4500
+npm start           # opens a browser on the current repository
+npm run serve       # bare server, opens nothing
 ```
 
 ## Running the tests
