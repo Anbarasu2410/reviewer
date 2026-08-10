@@ -16,6 +16,16 @@ const { formatReview, reviewFilename, commentsFilename } = require('./lib/review
 const DEFAULT_PORT = 4500;
 const DEFAULT_HOST = '127.0.0.1';
 
+/** A path inside the repository that names nothing, on disk or at HEAD. */
+class FileNotFoundError extends Error {
+  /** @param {string} filePath */
+  constructor(filePath) {
+    super('File not found in this repository');
+    this.name = 'FileNotFoundError';
+    this.filePath = filePath;
+  }
+}
+
 /**
  * Build the review server.
  *
@@ -67,6 +77,10 @@ function createApp(options = {}) {
    * In `lastCommit` mode the committed text is authoritative; a file added by
    * that commit is not in its parent, so the working copy is the fallback.
    *
+   * In `working` mode the working copy is authoritative — except for a file
+   * the review is about precisely because it was deleted, which is no longer
+   * on disk. Its content at HEAD is what the reviewer needs to see.
+   *
    * @param {{repoPath: string, mode: string}} session
    * @param {string} filePath repo-relative, already confined by the caller
    * @returns {Promise<string>}
@@ -83,7 +97,19 @@ function createApp(options = {}) {
       }
     }
 
-    return await fs.readFile(absolutePath, 'utf-8');
+    try {
+      return await fs.readFile(absolutePath, 'utf-8');
+    } catch (error) {
+      if (error.code !== 'ENOENT') throw error;
+      // Missing from disk means deleted — if HEAD has it. If HEAD does not
+      // either, the path simply names nothing and saying so beats answering
+      // with an empty file.
+      try {
+        return await git.show([`HEAD:${filePath}`]);
+      } catch {
+        throw new FileNotFoundError(filePath);
+      }
+    }
   }
 
   /**
@@ -197,6 +223,9 @@ function createApp(options = {}) {
       if (error instanceof PathEscapeError) {
         return res.status(400).json({ error: error.message });
       }
+      if (error instanceof FileNotFoundError) {
+        return res.status(404).json({ error: error.message });
+      }
       console.error('File read error:', error);
       res.status(500).json({ error: error.message });
     }
@@ -214,6 +243,9 @@ function createApp(options = {}) {
     } catch (error) {
       if (error instanceof PathEscapeError) {
         return res.status(400).json({ error: error.message });
+      }
+      if (error instanceof FileNotFoundError) {
+        return res.status(404).json({ error: error.message });
       }
       console.error('File read error:', error);
       res.status(500).json({ error: error.message });

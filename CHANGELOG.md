@@ -14,7 +14,7 @@ that could bite you or a change to a file the app writes.
 
 ### Added
 
-- **A test suite.** 90 tests covering diff parsing, path confinement, git
+- **A test suite.** 93 tests covering diff parsing, path confinement, git
   status mapping, comment normalization, review rendering, session handling,
   and the full HTTP surface. The HTTP tests run against real repositories
   created with real `git`, because diff parsing is exactly the place where a
@@ -34,9 +34,19 @@ that could bite you or a change to a file the app writes.
   Clicking any file in a freshly `git init`ed repository ran `git diff HEAD`
   against an unborn HEAD and returned a server error. Such a file is now shown
   as wholly new, which is what it is.
-- **Deleted files appear in the review.** Working-directory deletions were
-  dropped from the changed-file list entirely, so a removed file could not be
-  commented on. Deletions (`D`) and renames (`R`) are now listed.
+- **Deleted files appear in the review, and open.** Working-directory deletions
+  were dropped from the changed-file list entirely, so a removed file could not
+  be commented on. Deletions (`D`) and renames (`R`) are now listed — and
+  opening one no longer fails, since a file that is gone from disk is read back
+  out of `HEAD`, which is the whole point of reviewing it.
+- **A comment with a reply no longer collapses into a narrow column.** The
+  comment body was laid out as a flex row, so the follow-ups block competed
+  with the comment text for width and squeezed it to about 90px the moment a
+  single reply was added. The body is a vertical stack now, with the action
+  buttons pinned top-right.
+- **A path that names nothing answers 404** rather than 500 or, worse, an empty
+  file.
+- **The UI has a favicon**, so loading it no longer logs a 404.
 - **A file claimed by two git buckets is listed once.** A file that was staged
   and then edited again appeared twice in the sidebar.
 - **The diff parser no longer reads a second file's header as content.** Given

@@ -243,6 +243,48 @@ test('GET /api/file reads a nested path', async t => {
   assert.equal((await response.json()).filePath, 'src/deep/app.js');
 });
 
+test('GET /api/file shows a deleted file as its removed lines', async t => {
+  const server = await startTestServer();
+  const repoPath = await createTempRepo();
+  t.after(async () => {
+    await server.close();
+    await cleanup(repoPath);
+  });
+
+  // The file is gone from disk, which is exactly why it is under review.
+  await commitFiles(repoPath, { 'keep.js': 'k\n', 'gone.js': 'one\ntwo\n' }, 'initial');
+  await fs.rm(path.join(repoPath, 'gone.js'));
+
+  const { repoId } = await loadRepo(server.url, repoPath);
+  const response = await fetch(`${server.url}/api/file/${repoId}/gone.js`);
+  const body = await response.json();
+
+  assert.equal(response.status, 200);
+  assert.deepEqual(
+    body.diffLines.filter(line => line.type === 'delete').map(line => line.content),
+    ['one', 'two']
+  );
+});
+
+test('GET /api/file-full returns a deleted file from HEAD', async t => {
+  const server = await startTestServer();
+  const repoPath = await createTempRepo();
+  t.after(async () => {
+    await server.close();
+    await cleanup(repoPath);
+  });
+
+  await commitFiles(repoPath, { 'keep.js': 'k\n', 'gone.js': 'one\ntwo\n' }, 'initial');
+  await fs.rm(path.join(repoPath, 'gone.js'));
+
+  const { repoId } = await loadRepo(server.url, repoPath);
+  const response = await fetch(`${server.url}/api/file-full/${repoId}/gone.js`);
+  const body = await response.json();
+
+  assert.equal(response.status, 200);
+  assert.deepEqual(body.lines, ['one', 'two', '']);
+});
+
 test('GET /api/file rejects an unknown session', async t => {
   const server = await startTestServer();
   t.after(() => server.close());
@@ -529,7 +571,25 @@ test('two sessions review different repositories independently', async t => {
 
   // A path that exists in the other repository is still not readable here.
   const crossed = await fetch(`${server.url}/api/file-full/${sessionA.repoId}/b.js`);
-  assert.equal(crossed.status, 500);
+  assert.equal(crossed.status, 404);
+  assert.match((await crossed.json()).error, /not found/i);
+});
+
+test('GET /api/file 404s for a path that exists nowhere', async t => {
+  const server = await startTestServer();
+  const repoPath = await createTempRepo();
+  t.after(async () => {
+    await server.close();
+    await cleanup(repoPath);
+  });
+
+  await commitFiles(repoPath, { 'app.js': 'a\n' }, 'initial');
+  const { repoId } = await loadRepo(server.url, repoPath);
+
+  const response = await fetch(`${server.url}/api/file/${repoId}/nope.js`);
+
+  assert.equal(response.status, 404);
+  assert.match((await response.json()).error, /not found/i);
 });
 
 test('the static UI is served', async t => {

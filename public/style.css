@@ -556,21 +556,29 @@ button:disabled {
   border-radius: 50%;
 }
 
+/*
+ * The body of a comment is a vertical stack: the fuzzy-match warning, the
+ * comment text, its follow-ups, and any open reply box. Laying this out as a
+ * flex *row* made every block after the first compete with the text for
+ * width, which collapsed a commented line into a narrow column as soon as it
+ * had a single reply. The action buttons sit outside that flow, pinned to the
+ * top-right, with padding reserving their space.
+ */
 .comment-box {
   background: #fffbdd;
-  padding: 12px 16px;
+  padding: 12px 210px 12px 16px;
   margin: 0 90px 0 93px;
   border-left: 3px solid #f9c513;
   display: flex;
-  justify-content: space-between;
-  align-items: flex-start;
+  flex-direction: column;
+  align-items: stretch;
   border-radius: 0 0 4px 4px;
+  position: relative;
 }
 
 .comment-text {
   color: #735c0f;
   font-size: 13px;
-  flex: 1;
   white-space: pre-wrap;
   word-wrap: break-word;
 }
@@ -578,8 +586,10 @@ button:disabled {
 .comment-actions {
   display: flex;
   gap: 8px;
-  margin-left: 12px;
   flex-shrink: 0;
+  position: absolute;
+  top: 12px;
+  right: 16px;
 }
 
 .comment-edit {

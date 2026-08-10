@@ -3,7 +3,7 @@
 [![CI](https://github.com/dheerajjha/reviewer/actions/workflows/ci.yml/badge.svg)](https://github.com/dheerajjha/reviewer/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![Node](https://img.shields.io/badge/node-%3E%3D18-brightgreen.svg)](package.json)
-[![Tests](https://img.shields.io/badge/tests-90-brightgreen.svg)](test/)
+[![Tests](https://img.shields.io/badge/tests-93-brightgreen.svg)](test/)
 
 ![Plain grey code lines on the left resolving into colored diff stripes, with threaded comment markers attached in the right margin](docs/banner.jpg)
 
@@ -25,6 +25,11 @@ npm run electron
 
 Then `File > Open Repository` (`Cmd/Ctrl+O`) and pick any git repository.
 
+![The app reviewing a modified file: changed files on the left, a colour-coded diff in the middle with an inline comment and a threaded follow-up attached to line 10, and a comments sidebar on the right](docs/screenshot-comments.png)
+
+Click a line number, write the note, keep going. Replies thread under the
+comment they answer, and everything is saved as you type.
+
 ## What it shows you
 
 `reviewer` picks what to review based on the state of the repository, so there
@@ -38,7 +43,10 @@ is nothing to configure:
 
 Modified, added, deleted, renamed, and binary files are all listed, each marked
 with its git status letter. Deleted lines are commentable too — the most useful
-review note is often about the code someone removed.
+review note is often about the code someone removed. A file deleted outright is
+shown in full, read back out of `HEAD`:
+
+![The app showing a deleted file, every line rendered as a removal, recovered from HEAD because the file is no longer on disk](docs/screenshot-deleted.png)
 
 ## Reviewing
 
@@ -92,6 +100,10 @@ Timestamps are ISO 8601 rather than a locale format on purpose: a review gets
 committed, pasted into a pull request, and read on someone else's machine, so
 its shape should not depend on the reader.
 
+Submitting shows you exactly what was written, ready to download or copy:
+
+![The Review Submitted dialog showing the rendered Markdown review, with a download button naming the file review_api-service_2026-08-10_17-40-48-989Z.txt](docs/screenshot-review.png)
+
 ## Web mode
 
 ```bash
@@ -127,7 +139,7 @@ outside the opened repository are refused.
 
 ```bash
 npm install
-npm test              # 90 tests
+npm test              # 93 tests
 npm run test:watch
 npm run test:coverage
 ```
