@@ -42,19 +42,37 @@ function countDeclaredTests() {
     }, 0);
 }
 
-test('the README test-count badge matches the suite', () => {
+/**
+ * Every place the README states the test count.
+ *
+ * The badge was guarded from #18; the Development block's `npm test` comment
+ * was not, and went stale by 13 while the guarded number stayed right (#21).
+ * A count that lives in two places needs both of them checked, so new sites
+ * get added here rather than left to drift until someone reads them.
+ */
+const COUNT_SITES = [
+  { what: 'the tests badge (line 6)', pattern: /badge\/tests-(\d+)-/ },
+  {
+    what: "the Development block's `npm test` comment",
+    pattern: /npm test\s+#\s*(\d+) tests/
+  }
+];
+
+test('every README test count matches the suite', () => {
   const readme = fs.readFileSync(README, 'utf-8');
-  const badge = readme.match(/badge\/tests-(\d+)-/);
-
-  assert.ok(badge, 'README has no tests badge for this test to check');
-
   const declared = countDeclaredTests();
-  assert.equal(
-    Number(badge[1]),
-    declared,
-    `README badge says ${badge[1]} tests, the suite declares ${declared}. ` +
-      'Update the badge in README.md to match. Use this number, not the count ' +
-      '`node --test` prints — that one is one higher, because it counts ' +
-      'test/helpers/repo.js as a test.'
-  );
+
+  for (const { what, pattern } of COUNT_SITES) {
+    const found = readme.match(pattern);
+
+    assert.ok(found, `README no longer states the test count in ${what}`);
+    assert.equal(
+      Number(found[1]),
+      declared,
+      `README says ${found[1]} tests in ${what}, the suite declares ${declared}. ` +
+        'Update it in README.md to match. Use this number, not the count ' +
+        '`node --test` prints — that one is one higher, because it counts ' +
+        'test/helpers/repo.js as a test.'
+    );
+  }
 });

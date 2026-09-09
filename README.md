@@ -209,7 +209,7 @@ rather than a public issue.
 
 ```bash
 npm install           # 3 dependencies, no build step, ~6MB
-npm test              # 150 tests
+npm test              # 163 tests
 npm run test:watch
 npm run test:coverage
 ```
