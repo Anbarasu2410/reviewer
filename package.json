@@ -1,7 +1,7 @@
 {
-  "name": "code-reviewer",
+  "name": "git-reviewer",
   "version": "2.0.0",
-  "description": "Review local git changes in your browser with inline comments and threaded follow-ups — no branch, remote, or account required",
+  "description": "Review local git changes in your browser with inline comments and threaded follow-ups \u2014 no branch, remote, or account required",
   "author": "Dheeraj Jha",
   "license": "MIT",
   "homepage": "https://github.com/dheerajjha/reviewer#readme",

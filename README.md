@@ -18,7 +18,7 @@ writes a plain Markdown file you can paste anywhere.
 
 ```bash
 cd ~/work/my-app
-npx github:dheerajjha/reviewer .
+npx git-reviewer .
 ```
 
 That starts a local server and opens your browser on the repository you named.
@@ -56,6 +56,17 @@ reviewer . --port 8080      # somewhere other than 4500
 Two at once is fine — the second one finds its own port.
 
 To install it as a command rather than running it through `npx`:
+
+```bash
+npm install -g git-reviewer
+reviewer .
+```
+
+The package is `git-reviewer` because `reviewer` and `code-reviewer` were both
+already taken on npm. The command it installs is still `reviewer` -- the
+package name is a distribution detail, the command is the product.
+
+From a clone, if you would rather not install anything:
 
 ```bash
 git clone https://github.com/dheerajjha/reviewer.git

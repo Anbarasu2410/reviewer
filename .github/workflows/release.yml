@@ -1,0 +1,73 @@
+# Publishes to npm on a v* tag.
+#
+# Needs an NPM_TOKEN repository secret (an npm automation token). npm's
+# trusted publishing (OIDC) is the better shape and needs no token, but it is
+# configured per-package on npmjs.com and so cannot be set up before the
+# package exists -- switch to it after the first release if you want the token
+# gone.
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: read
+
+jobs:
+  # Never publish something the suite has not seen. A tag is cheap to re-cut;
+  # a published npm version can be deprecated but not replaced.
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        node-version: [18, 20, 22]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node-version }}
+      - run: npm ci
+      - run: npm test
+
+  publish:
+    needs: test
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write   # provenance attestation
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          registry-url: 'https://registry.npmjs.org'
+      - run: npm ci
+
+      # The published tarball is built from the `files` allowlist, so a file
+      # that exists in git but is not listed simply is not shipped, and the
+      # failure only shows up as a runtime crash for whoever installed it.
+      # Assert the entry point and every lib/ module made it in.
+      - name: Verify the tarball ships what the CLI needs
+        run: |
+          npm pack --silent
+          tar -tzf git-reviewer-*.tgz > /tmp/files.txt
+          for required in package/bin/reviewer.js package/server.js package/lib/review.js package/lib/store.js package/lib/agent.js package/public/index.html; do
+            grep -qx "$required" /tmp/files.txt || { echo "::error::$required missing from the tarball"; exit 1; }
+          done
+          echo "tarball contents verified ($(wc -l < /tmp/files.txt) entries)"
+
+      # Install the tarball into a clean prefix and run the real binary, so a
+      # broken entry point cannot reach the registry.
+      - name: Smoke-test the packed binary
+        run: |
+          mkdir -p /tmp/smoke && cd /tmp/smoke && npm init -y --silent > /dev/null
+          npm install --silent "$GITHUB_WORKSPACE"/git-reviewer-*.tgz
+          ./node_modules/.bin/reviewer --version
+          ./node_modules/.bin/reviewer --help | head -1
+
+      - run: npm publish --provenance --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
