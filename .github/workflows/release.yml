@@ -1,10 +1,16 @@
-# Publishes to npm on a v* tag.
+# Publishes to npm on a v* tag, via trusted publishing (OIDC).
 #
-# Needs an NPM_TOKEN repository secret (an npm automation token). npm's
-# trusted publishing (OIDC) is the better shape and needs no token, but it is
-# configured per-package on npmjs.com and so cannot be set up before the
-# package exists -- switch to it after the first release if you want the token
-# gone.
+# There is no npm token anywhere in this repository. npm verifies the workflow
+# identity below and mints a short-lived credential for that one publish. The
+# trust relationship is registered against the package:
+#
+#   npm trust list git-reviewer
+#     type: github   file: release.yml   repository: dheerajjha/reviewer
+#
+# Three things must keep matching that record or the publish is rejected: the
+# repository, this file's name, and the absence of an environment. Renaming
+# this file is therefore a breaking change -- re-run `npm trust github` if you
+# ever do.
 name: Release
 
 on:
@@ -37,13 +43,30 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
-      id-token: write   # provenance attestation
+      id-token: write   # this IS the credential: OIDC identity + provenance
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: 22
           registry-url: 'https://registry.npmjs.org'
+
+      # Node 22 ships npm 10.x, and trusted publishing needs >= 11.5.1. An
+      # older npm does not error on the missing feature -- it falls back to
+      # looking for a token, finds none, and fails with a bare 404/ENEEDAUTH
+      # that says nothing about OIDC. Pin the floor explicitly and print it.
+      - name: Ensure npm supports trusted publishing
+        run: |
+          npm install -g npm@latest
+          npm --version
+          node -e '
+            const v = process.env.npm_version || require("child_process").execSync("npm --version").toString().trim();
+            const [maj, min, pat] = v.split(".").map(Number);
+            const ok = maj > 11 || (maj === 11 && (min > 5 || (min === 5 && pat >= 1)));
+            if (!ok) { console.error(`::error::npm ${v} cannot use trusted publishing (need >= 11.5.1)`); process.exit(1); }
+            console.log(`npm ${v} supports trusted publishing`);
+          '
+
       - run: npm ci
 
       # The published tarball is built from the `files` allowlist, so a file
@@ -68,6 +91,6 @@ jobs:
           ./node_modules/.bin/reviewer --version
           ./node_modules/.bin/reviewer --help | head -1
 
+      # No NODE_AUTH_TOKEN: the id-token permission above is the credential.
+      # Provenance is attested from the same OIDC identity.
       - run: npm publish --provenance --access public
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
