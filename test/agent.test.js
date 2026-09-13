@@ -2,6 +2,7 @@
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
+const path = require('node:path');
 
 const { buildReviewDocument, filterReviewDocument, formatPrompt, SCHEMA } = require('../lib/agent');
 
@@ -90,6 +91,32 @@ test('filterReviewDocument reports an empty result without mutating the document
   assert.deepEqual(filtered.summary, { comments: 0, files: 0 });
   assert.deepEqual(filtered.comments, []);
   assert.equal(document.comments.length, 3);
+});
+
+test('filterReviewDocument matches a ./-prefixed path from shell tab-completion', () => {
+  const filtered = filterReviewDocument(build(), { file: './src/auth.js' });
+
+  assert.deepEqual(filtered.summary, { comments: 2, files: 1 });
+});
+
+test('filterReviewDocument matches a path with duplicate separators', () => {
+  const filtered = filterReviewDocument(build(), { file: 'src//auth.js' });
+
+  assert.deepEqual(filtered.summary, { comments: 2, files: 1 });
+});
+
+test('filterReviewDocument matches a path typed with backslashes', () => {
+  const filtered = filterReviewDocument(build(), { file: 'src\\auth.js' });
+
+  assert.deepEqual(filtered.summary, { comments: 2, files: 1 });
+});
+
+test('filterReviewDocument matches an absolute path under the repository', () => {
+  const repoPath = path.resolve('work', 'api-service');
+  const document = build(COMMENTS, { repoPath });
+  const filtered = filterReviewDocument(document, { file: path.join(repoPath, 'src', 'auth.js') });
+
+  assert.deepEqual(filtered.summary, { comments: 2, files: 1 });
 });
 
 test('filterReviewDocument leaves unfiltered exports unchanged', () => {
