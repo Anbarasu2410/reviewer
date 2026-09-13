@@ -162,7 +162,10 @@ async function loadRepo() {
     // The server answers with the root of the working tree, which is not
     // always what was asked for: open a subdirectory and the repository above
     // it is what gets reviewed. Show the path that is actually loaded.
-    if (data.repoPath) document.getElementById('repoPath').value = data.repoPath;
+    if (data.repoPath) {
+      document.getElementById('repoPath').value = data.repoPath;
+      setRepoButton(data.repoPath);
+    }
 
     if (data.files.length === 0) {
       showStatus('No uncommitted changes found in the repository', 'error');
@@ -171,6 +174,7 @@ async function loadRepo() {
     }
 
     showStatus(data.message, 'success');
+    hidePicker();
     displayFiles(data.files);
 
     // Load saved comments
@@ -192,8 +196,23 @@ async function loadRepo() {
       showStatus(`${data.message} - Loaded ${savedComments.length} saved comment(s)`, 'success');
     }
 
+    // Open something. A loaded repository used to sit behind an empty pane
+    // until a file was clicked, which reads as a failure rather than as a
+    // result (#47). Done here rather than in `displayFiles` because the saved
+    // comments have to be in hand first, or the diff renders without them.
+    //
+    // The file already open wins if it is still in the list, so reloading a
+    // repository does not move you off what you were reading.
+    if (currentFiles.length > 0) {
+      const previous = currentFiles.findIndex(file => file.path === currentFile);
+      const opening = previous === -1 ? 0 : previous;
+
+      loadFile(currentFiles[opening].path, opening);
+    }
+
   } catch (error) {
     showStatus(`Error: ${error.message}`, 'error');
+    showPicker();
   } finally {
     document.getElementById('loadBtn').disabled = false;
   }
@@ -1064,6 +1083,7 @@ function resetApp() {
   comments = [];
 
   document.getElementById('repoPath').value = '';
+  setRepoButton(null);
   document.getElementById('sidebar').classList.add('hidden');
   document.getElementById('resizeHandle').classList.add('hidden');
   document.getElementById('codeSection').classList.add('hidden');
@@ -1071,6 +1091,8 @@ function resetApp() {
   document.getElementById('submitReviewBtn').classList.add('hidden');
   document.getElementById('status').textContent = '';
   document.getElementById('status').className = 'status';
+
+  showPicker();
 }
 
 // Show status message
@@ -1234,9 +1256,18 @@ function displayFullContext(filePath, lines) {
 
 // Escape HTML
 function escapeHtml(text) {
-  const div = document.createElement('div');
-  div.textContent = text;
-  return div.innerHTML;
+  // The DOM does this for &, < and > and leaves both quote characters alone,
+  // which is right for a text node and wrong for an attribute -- and most of
+  // the callers here are attributes. A file or folder whose name contained a
+  // double quote closed the attribute early, and everything after it in the
+  // name was read as markup. Escaped here rather than at each call site,
+  // because the safe version has to be the one that is easy to reach for.
+  return String(text ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
 }
 
 // Sidebar resize functionality
@@ -1447,11 +1478,259 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   });
 
+  for (const id of ['recentList', 'browseList']) {
+    const list = document.getElementById(id);
+    list.addEventListener('click', onPickerActivate);
+    list.addEventListener('keydown', onPickerActivate);
+  }
+
+  // Escape, and a click on the dimmed area around it, both mean "never mind"
+  // -- but only when there is a review behind the picker to go back to.
+  document.addEventListener('keydown', event => {
+    if (event.key === 'Escape') closePicker();
+  });
+
+  document.getElementById('picker').addEventListener('click', event => {
+    if (event.target.id === 'picker') closePicker();
+  });
+
   // `reviewer /path/to/repo` opens the page with the repository in the query
   // string, so the review is on screen without anyone typing a path.
   const requestedRepo = new URLSearchParams(window.location.search).get('repo');
   if (requestedRepo) {
     document.getElementById('repoPath').value = requestedRepo;
+    // Hidden before the request goes out, so the picker does not flash up for
+    // the fraction of a second it takes to load a repository that was named.
+    hidePicker();
     loadRepo();
+  } else {
+    showPicker();
   }
 });
+
+
+/* Repository picker
+ * ---------------------------------------------------------------------------
+ * What the page shows before a repository is open. It used to show nothing but
+ * an empty path box in the header, which asked you to already know the path you
+ * were looking for -- and to type it exactly.
+ */
+
+/** Where the browse list is pointed. Null until the first listing arrives. */
+let browseAt = null;
+let browseParent = null;
+let browseIsRepository = false;
+
+/**
+ * Show the picker.
+ *
+ * With nothing open it is the page. With a review open it is a layer over the
+ * review, because being asked which repository you want should not cost you
+ * the one you are reading.
+ */
+function showPicker() {
+  const reviewing = currentRepoId !== null;
+
+  document.getElementById('picker').classList.remove('hidden');
+  document.getElementById('picker').classList.toggle('as-overlay', reviewing);
+  document.getElementById('pickerClose').classList.toggle('hidden', !reviewing);
+
+  loadRecent();
+  loadBrowse(browseAt);
+}
+
+function hidePicker() {
+  document.getElementById('picker').classList.add('hidden');
+}
+
+/** Dismiss the picker, which only means anything when there is something behind it. */
+function closePicker() {
+  if (currentRepoId !== null) hidePicker();
+}
+
+/**
+ * Reveal the path box, for pasting a path or typing one you already know.
+ *
+ * Kept out of the way rather than removed: a navigator is the slow way round
+ * when the path is already on your clipboard.
+ */
+function togglePathEntry() {
+  const entry = document.getElementById('pathEntry');
+  const toggle = document.getElementById('pathToggle');
+  const showing = entry.classList.toggle('hidden') === false;
+
+  toggle.setAttribute('aria-expanded', String(showing));
+
+  if (showing) {
+    const input = document.getElementById('repoPath');
+    input.focus();
+    input.select();
+  }
+}
+
+/**
+ * Name the repository on the button that opens the picker.
+ *
+ * @param {string|null} repoPath
+ */
+function setRepoButton(repoPath) {
+  const name = repoPath ? repoPath.split(/[\\/]/).filter(Boolean).pop() : null;
+
+  document.getElementById('repoButtonLabel').textContent = name ?? 'Open a repository';
+  document.getElementById('repoButton').title = repoPath ?? 'Choose a repository';
+}
+
+/**
+ * How long ago, in the least fussy words that are still true.
+ *
+ * @param {string} iso
+ * @returns {string}
+ */
+function timeAgo(iso) {
+  const seconds = Math.round((Date.now() - new Date(iso).getTime()) / 1000);
+
+  if (!Number.isFinite(seconds) || seconds < 60) return 'just now';
+
+  for (const [unit, size] of [['minute', 60], ['hour', 3600], ['day', 86400]]) {
+    if (seconds < size * 60 || unit === 'day') {
+      const count = Math.floor(seconds / size);
+      if (unit === 'day' && count > 30) return new Date(iso).toLocaleDateString();
+      return `${count} ${unit}${count === 1 ? '' : 's'} ago`;
+    }
+  }
+}
+
+/** Repositories opened before, newest first. */
+async function loadRecent() {
+  const section = document.getElementById('recentSection');
+  const list = document.getElementById('recentList');
+
+  let projects;
+  try {
+    projects = (await (await fetch(`${API_BASE}/recent`)).json()).projects ?? [];
+  } catch {
+    // Not being able to remember is not worth an error message on a page whose
+    // other half works. The browser below still opens anything.
+    section.classList.add('hidden');
+    return;
+  }
+
+  if (projects.length === 0) {
+    section.classList.add('hidden');
+    return;
+  }
+
+  section.classList.remove('hidden');
+  list.innerHTML = projects
+    .map(project => {
+      const meta = project.exists
+        ? [project.comments > 0 ? `${project.comments} comment${project.comments === 1 ? '' : 's'}` : '', timeAgo(project.openedAt)]
+            .filter(Boolean)
+            .join(' · ')
+        : 'no longer there';
+
+      return `
+        <div class="picker-row${project.exists ? '' : ' missing'}"
+             ${project.exists ? `role="button" tabindex="0" data-open="${escapeHtml(project.path)}"` : ''}
+             title="${escapeHtml(project.path)}">
+          <span class="picker-row-icon">${project.exists ? '▸' : '×'}</span>
+          <span class="picker-row-name">${escapeHtml(project.name)}</span>
+          <span class="picker-row-path">${escapeHtml(project.path)}</span>
+          <span class="picker-row-meta">${escapeHtml(meta)}</span>
+        </div>`;
+    })
+    .join('');
+}
+
+/**
+ * List one directory.
+ *
+ * @param {string|null} path directory to list; the home directory when null
+ */
+async function loadBrowse(path) {
+  const list = document.getElementById('browseList');
+
+  let listing;
+  try {
+    const response = await fetch(`${API_BASE}/browse?path=${encodeURIComponent(path ?? '')}`);
+    listing = await response.json();
+    if (!response.ok) throw new Error(listing.error || 'Could not list that directory');
+  } catch (error) {
+    list.innerHTML = `<div class="picker-empty">${escapeHtml(error.message)}</div>`;
+    return;
+  }
+
+  browseAt = listing.path;
+  browseParent = listing.parent;
+  browseIsRepository = listing.isRepository;
+
+  document.getElementById('browsePath').textContent = listing.path;
+  document.getElementById('browseUpBtn').disabled = listing.parent === null;
+  document
+    .getElementById('browseOpenBtn')
+    .classList.toggle('hidden', !listing.isRepository);
+
+  if (listing.entries.length === 0) {
+    list.innerHTML = '<div class="picker-empty">No folders in here.</div>';
+    return;
+  }
+
+  // A repository row goes both ways: the row walks into it, the button opens
+  // it. Walking in matters for the repository that has another one inside it,
+  // and one click has to be enough for the ordinary case.
+  list.innerHTML = listing.entries
+    .map(
+      entry => `
+        <div class="picker-row" role="button" tabindex="0" data-into="${escapeHtml(entry.path)}"
+             title="${escapeHtml(entry.path)}">
+          <span class="picker-row-icon">${entry.isRepository ? '◉' : '▸'}</span>
+          <span class="picker-row-name">${escapeHtml(entry.name)}</span>
+          ${entry.isRepository ? '<span class="picker-badge">git</span>' : ''}
+          <span class="picker-row-path"></span>
+          ${entry.isRepository ? `<button class="picker-open" data-open="${escapeHtml(entry.path)}">Open</button>` : ''}
+        </div>`
+    )
+    .join('');
+}
+
+function browseUp() {
+  if (browseParent) loadBrowse(browseParent);
+}
+
+function openBrowsed() {
+  if (browseIsRepository) openProject(browseAt);
+}
+
+/**
+ * Load a repository the way typing its path and pressing the button would.
+ *
+ * @param {string} path
+ */
+function openProject(path) {
+  document.getElementById('repoPath').value = path;
+  loadRepo();
+}
+
+/**
+ * One handler for both lists: open what carries `data-open`, walk into what
+ * carries `data-into`. Delegation rather than an `onclick` per row, because a
+ * path is not safe to interpolate into an attribute that is then evaluated.
+ *
+ * @param {Event} event
+ */
+function onPickerActivate(event) {
+  if (event.type === 'keydown') {
+    if (event.key !== 'Enter' && event.key !== ' ') return;
+    event.preventDefault();
+  }
+
+  const open = event.target.closest('[data-open]');
+  if (open) {
+    event.stopPropagation();
+    openProject(open.dataset.open);
+    return;
+  }
+
+  const into = event.target.closest('[data-into]');
+  if (into) loadBrowse(into.dataset.into);
+}
