@@ -68,6 +68,33 @@ test('normalizeComments rejects a non-array', () => {
   assert.throws(() => normalizeComments({ file: 'a.js' }), TypeError);
 });
 
+test('normalizeComments rejects a comment with no file or text instead of storing undefined', () => {
+  // Posting another shape (e.g. filePath/body) used to be saved as { line } and
+  // exported as a comment on a file called "undefined".
+  assert.throws(
+    () => normalizeComments([{ filePath: 'f.txt', line: 2, body: 'hello' }]),
+    { name: 'TypeError', message: 'comments[0].file must be a non-empty string' }
+  );
+  assert.throws(() => normalizeComments([{}]), TypeError);
+});
+
+test('normalizeComments names the malformed field and its index', () => {
+  const valid = { file: 'a.js', line: 1, text: 'ok' };
+  const cases = [
+    [null, 'comments[1] must be an object'],
+    [[], 'comments[1] must be an object'],
+    [{ ...valid, file: '   ' }, 'comments[1].file must be a non-empty string'],
+    [{ ...valid, line: 0 }, 'comments[1].line must be a positive integer'],
+    [{ ...valid, line: '3' }, 'comments[1].line must be a positive integer'],
+    [{ ...valid, line: 1.5 }, 'comments[1].line must be a positive integer'],
+    [{ ...valid, text: '' }, 'comments[1].text must be a non-empty string'],
+    [{ file: 'a.js', line: 1 }, 'comments[1].text must be a non-empty string']
+  ];
+  for (const [comment, message] of cases) {
+    assert.throws(() => normalizeComments([valid, comment]), { name: 'TypeError', message });
+  }
+});
+
 test('normalizeComments accepts an empty list', () => {
   assert.deepEqual(normalizeComments([]), []);
 });

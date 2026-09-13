@@ -6,6 +6,14 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Fixed
+
+- **`POST /api/save-comments` rejects a comment with no file, line or text.**
+  It answers 400 naming the field and the comment's index instead of saving it,
+  so a malformed comment can no longer reach `reviewer export` as a comment on
+  a file called `undefined`.
+  ([#19](https://github.com/dheerajjha/reviewer/issues/19))
+
 ## [2.3.0] - 2026-09-14
 
 ### Added

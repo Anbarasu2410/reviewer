@@ -434,6 +434,30 @@ test('POST /api/save-comments rejects comments that are not a list', async t => 
   assert.match((await response.json()).error, /must be an array/i);
 });
 
+test('POST /api/save-comments rejects a malformed comment and stores nothing', async t => {
+  const server = await startTestServer();
+  const repoPath = await createTempRepo();
+  t.after(async () => {
+    await server.close();
+    await cleanup(repoPath);
+  });
+
+  await commitFiles(repoPath, { 'app.js': 'a\n' }, 'initial');
+  const { repoId } = await loadRepo(server.url, repoPath);
+
+  const response = await fetch(`${server.url}/api/save-comments`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ repoId, comments: [{ filePath: 'app.js', line: 1, body: 'hello' }] })
+  });
+
+  assert.equal(response.status, 400);
+  assert.match((await response.json()).error, /comments\[0\]\.file must be a non-empty string/);
+
+  const loaded = await (await fetch(`${server.url}/api/load-comments/${repoId}`)).json();
+  assert.deepEqual(loaded.comments, []);
+});
+
 test('POST /api/submit-review refuses when nothing has been saved', async t => {
   const server = await startTestServer();
   const repoPath = await createTempRepo();
