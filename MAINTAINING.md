@@ -111,6 +111,33 @@ registered.** `gh pr checks` reports success against an empty set. I merged
 two PRs this way (#39, #61) before the runs existed. Gate on a non-empty pass
 list, not on the absence of failures. The Node 18 legs take 3–5 minutes.
 
+**A first-time contributor's fork PR will sit here with CI never running.**
+This repo is on `first_time_contributors`, so their run parks in
+`action_required` until someone approves it by hand — no failure, no
+notification, just a PR that looks ignored. With 2 forks and distribution as
+the binding constraint (§8), the first outside pull request this project ever
+gets is exactly the one most likely to be lost this way.
+
+    gh api repos/dheerajjha/reviewer/actions/permissions/fork-pr-contributor-approval
+
+Until it is changed, **check for queued fork runs whenever a new contributor
+opens a PR** and approve them. Note `mcp-migrate` is on the looser
+`first_time_contributors_new_to_github` — the two repos differ, so do not
+carry an assumption from one to the other.
+
+The safety conditions for loosening this were audited here on 2026-09-17 and
+all hold: `ci.yml` is the only fork-reachable workflow; it triggers on
+`pull_request`, **not** `pull_request_target`, so fork code gets a read-only
+token and no secrets; `ci.yml` references no secrets at all; `release.yml`
+holds the only real credential (`id-token: write`) and is tags-only, so it is
+unreachable from a fork; the repo default workflow permission is `read` and
+`can_approve_pull_request_reviews` is false.
+
+**Do not flip it on that evidence alone.** The equivalent change on
+`mcp-migrate` was made with Dheeraj's explicit authorisation in August, and a
+security-posture change on his public repo needs his word the same way here.
+The audit is done; the decision is his.
+
 ## 4. Releasing
 
 Standing instruction from the owner: **if `main` is ahead of the published
