@@ -171,11 +171,21 @@ on" change. Not misleading, but not current either.
 
 ## 7. Open work, in priority order
 
-1. **#20 and #25** — both `good first issue`, both real, and they are *one*
-   bug: `lib/changes.js` mangles paths in `lastCommit` mode, octal-escaping
-   non-ASCII names (line 41) and leaving renames as `old => new` (line 81).
-   Either fix alone passes its own test and leaves the other symptom. They must
-   be fixed together. Diagnosis re-verified against today's `main`.
+1. **#20 and #25** — both `good first issue`, both real, and they are one bug
+   in **one line**: `lib/changes.js:81`, in `collectCommitChanges`, passes
+   simple-git's `file.file` straight through. In `lastCommit` mode git hands
+   that field back with renames written as `old => new` (#25) and non-ASCII
+   names octal-escaped and quoted, e.g. `"caf\303\251.js"` (#20). Either way
+   the path is not a path, so the file opens to an empty diff and can never be
+   reviewed.
+
+   Contrast `collectWorkingChanges` at `:41-42`, which *does* unwrap
+   `{ from, to }`. The working-tree path is already correct — that asymmetry is
+   the bug, and it is why this only shows in `lastCommit` mode.
+
+   A fix that handles one encoding and not the other passes its own test and
+   leaves the other symptom in place, which is why these must be done together.
+   Re-verified at `08293a5`; the file is untouched since `79082e1`.
 2. **#32** — `repository.head` is read live at export time, so the documented
    staleness check cannot work. The docs describe a guarantee the code does not
    provide.
