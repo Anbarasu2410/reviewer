@@ -120,8 +120,20 @@ gets is exactly the one most likely to be lost this way.
 
     gh api repos/dheerajjha/reviewer/actions/permissions/fork-pr-contributor-approval
 
-Until it is changed, **check for queued fork runs whenever a new contributor
-opens a PR** and approve them. Note `mcp-migrate` is on the looser
+Until it is changed, **watch for queued fork runs whenever a new contributor
+opens a PR**:
+
+    gh run list --repo dheerajjha/reviewer --status action_required
+
+Two cautions on that list. A queued `action_required` run and a blocked
+contributor look identical until you check whether a PR is still attached —
+leftovers from superseded commits sit there looking like emergencies. And
+approving a run *executes a contributor's code on the owner's compute*, which
+for an agent acting on someone else's public repo is the same outward-facing
+category as changing the setting, arguably more so. Surface it; approve it if
+you are the owner or the owner has cleared you.
+
+Note `mcp-migrate` is on the looser
 `first_time_contributors_new_to_github` — the two repos differ, so do not
 carry an assumption from one to the other.
 
