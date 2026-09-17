@@ -6,6 +6,30 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [2.7.0] - 2026-09-17
+
+### Fixed
+
+- **Renamed and non-ASCII files open again in `lastCommit` mode.**
+  ([#25](https://github.com/dheerajjha/reviewer/issues/25),
+  [#20](https://github.com/dheerajjha/reviewer/issues/20))
+  `diffSummary()` hands back git's `diff --stat` display strings rather than
+  paths, so `sub/{old.txt => new.txt}`, `keep.txt => root-moved.txt` and
+  octal-quoted names like `"caf\303\251-\346\227\245\346\234\254.txt"`
+  were all used verbatim as file paths — they opened to an empty diff, and a
+  rename out of a subdirectory produced a leading slash that `resolveRepoFile`
+  rejected outright with a 400.
+- A rename that also carried an edit was classified **`A`**, because
+  insertions were non-zero and deletions were zero. A file that had existed
+  for years was presented as brand new.
+
+### Added
+
+- **`R` as a file status**, distinct from `M`. The vocabulary in
+  `lib/changes.js` has documented `'A'|'M'|'D'|'R'|'B'` all along; renames now
+  actually carry it. Note the sidebar does not yet draw it — see
+  [#65](https://github.com/dheerajjha/reviewer/issues/65).
+
 ## [2.6.0] - 2026-09-15
 
 ### Added
