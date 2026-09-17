@@ -111,17 +111,35 @@ registered.** `gh pr checks` reports success against an empty set. I merged
 two PRs this way (#39, #61) before the runs existed. Gate on a non-empty pass
 list, not on the absence of failures. The Node 18 legs take 3–5 minutes.
 
-**A first-time contributor's fork PR will sit here with CI never running.**
-This repo is on `first_time_contributors`, so their run parks in
-`action_required` until someone approves it by hand — no failure, no
-notification, just a PR that looks ignored. With 2 forks and distribution as
-the binding constraint (§8), the first outside pull request this project ever
-gets is exactly the one most likely to be lost this way.
+**Fork-PR CI approval was loosened here on 2026-09-17, with Dheeraj's
+authorisation.** The setting is `first_time_contributors_new_to_github`, so
+only accounts brand new to GitHub are held; anyone with history gets CI
+immediately. `mcp-migrate` has been on the same setting since August, so the
+two repos now match — but check rather than assume, because they did not match
+for a month and the handover written that morning got it wrong:
 
     gh api repos/dheerajjha/reviewer/actions/permissions/fork-pr-contributor-approval
 
-Until it is changed, **watch for queued fork runs whenever a new contributor
-opens a PR**:
+Why it was changed: on the strict setting a first-time contributor's run parks
+in `action_required` until someone approves it by hand — no failure, no
+notification, just a pull request that looks ignored. With 2 forks and
+distribution as the binding constraint (§8), the first outside pull request
+this project ever gets was exactly the one most likely to be lost that way.
+
+**This is safe because of specific facts, and it stops being safe if they
+change.** Audited 2026-09-17, all holding: `ci.yml` is the only fork-reachable
+workflow; it triggers on `pull_request`, **not** `pull_request_target`, so fork
+code gets a read-only token and no secrets; `ci.yml` references no secrets at
+all; `release.yml` holds the only real credential (`id-token: write`) and is
+tags-only, so it is unreachable from a fork; the repo default workflow
+permission is `read` and `can_approve_pull_request_reviews` is false.
+
+**Re-audit if anyone adds `pull_request_target` or a custom secret.** There is
+no "never require approval" option at repo level, so this is as open as it
+goes — and the policy change does not retroactively release runs already
+queued.
+
+If you do find a held run:
 
     gh run list --repo dheerajjha/reviewer --status action_required
 
@@ -129,26 +147,8 @@ Two cautions on that list. A queued `action_required` run and a blocked
 contributor look identical until you check whether a PR is still attached —
 leftovers from superseded commits sit there looking like emergencies. And
 approving a run *executes a contributor's code on the owner's compute*, which
-for an agent acting on someone else's public repo is the same outward-facing
-category as changing the setting, arguably more so. Surface it; approve it if
-you are the owner or the owner has cleared you.
-
-Note `mcp-migrate` is on the looser
-`first_time_contributors_new_to_github` — the two repos differ, so do not
-carry an assumption from one to the other.
-
-The safety conditions for loosening this were audited here on 2026-09-17 and
-all hold: `ci.yml` is the only fork-reachable workflow; it triggers on
-`pull_request`, **not** `pull_request_target`, so fork code gets a read-only
-token and no secrets; `ci.yml` references no secrets at all; `release.yml`
-holds the only real credential (`id-token: write`) and is tags-only, so it is
-unreachable from a fork; the repo default workflow permission is `read` and
-`can_approve_pull_request_reviews` is false.
-
-**Do not flip it on that evidence alone.** The equivalent change on
-`mcp-migrate` was made with Dheeraj's explicit authorisation in August, and a
-security-posture change on his public repo needs his word the same way here.
-The audit is done; the decision is his.
+for an agent acting on someone else's public repo is an outward-facing act.
+Surface it; approve it if you are the owner or the owner has cleared you.
 
 ## 4. Releasing
 
