@@ -129,6 +129,19 @@ Three things must keep matching npm's trust record or the publish is rejected:
 the repository, the *filename* `release.yml`, and the absence of an
 environment. Renaming that workflow file is a breaking change.
 
+**Two guards on that rule, both learned the hard way:**
+
+*Ahead is necessary, not sufficient.* Check that CI is **green on `main`**, and
+that the run you are reading is the one for the commit you are about to tag —
+`gh run list --branch main --limit 1` reports `in_progress` with no conclusion,
+which is not a pass. On 2026-09-17 `main` was one commit ahead of `v2.6.0` and
+*red*, because that commit broke the badge test; "ahead" alone would have
+published a red tree over OIDC, and OIDC needs no human at the keyboard to stop
+it.
+
+*Docs-only and test-only commits do not need a release of their own.* Being
+ahead by a README fix is not a reason to publish. Behaviour changes are.
+
 Verify by installing the published artifact fresh. Not by reading the green
 tick.
 
