@@ -47,7 +47,18 @@ node --test          # 273 tests, ~5s, all green
 npm start            # serves the UI for the current directory
 ```
 
-Green looks like `pass 273 / fail 0`. There is no linter and no build step;
+Green looks like `pass 273 / fail 0` — while the README badge reads **272**,
+and both of those are correct at the same time.
+
+`node --test` prints 273 because it counts `test/helpers/repo.js` as a test
+file. `countDeclaredTests()` in `test/readme.test.js` returns 272, and 272 is
+what the badge and the Development block must say. I changed the badge to 273
+on 2026-09-17 because the runner told me 273, and turned a green tree red; the
+failing assertion's own message warns against exactly that number, and I did
+not read it because the test had been passing before I broke it. **Trust the
+test's number, not the runner's total.**
+
+There is no linter and no build step;
 three runtime dependencies, and the project would like to keep it that way.
 CI is `ci.yml` on Linux and macOS across Node 18/20/22. Windows is absent on
 purpose — its runners never picked up a job — and that is documented in the
