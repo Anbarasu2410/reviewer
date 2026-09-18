@@ -41,5 +41,19 @@ test('keyboard navigation is ignored in inputs and textareas', () => {
     assert.equal(getKeyboardShortcut('j', 'INPUT'), null);
     assert.equal(getKeyboardShortcut('j', 'TEXTAREA'), null);
     assert.equal(getKeyboardShortcut('?', 'INPUT'), null);
-    assert.equal(getKeyboardShortcut('Escape', 'INPUT'), null);
+    assert.equal(getKeyboardShortcut('Escape', 'INPUT'), 'escape');
+    assert.equal(getKeyboardShortcut('Escape', 'TEXTAREA'), 'escape');
+});
+
+test('modifier keys prevent shortcuts from firing', () => {
+    // Ctrl+P should not trigger prevComment — it should print
+    assert.equal(getKeyboardShortcut('p', 'DIV', { ctrl: true }), null);
+    assert.equal(getKeyboardShortcut('j', 'DIV', { ctrl: true }), null);
+    assert.equal(getKeyboardShortcut('n', 'DIV', { meta: true }), null);
+    assert.equal(getKeyboardShortcut('k', 'DIV', { alt: true }), null);
+    // Even Escape is suppressed with a modifier
+    assert.equal(getKeyboardShortcut('Escape', 'DIV', { ctrl: true }), null);
+    // Without modifiers, shortcuts still work
+    assert.equal(getKeyboardShortcut('p', 'DIV'), 'prevComment');
+    assert.equal(getKeyboardShortcut('p', 'DIV', {}), 'prevComment');
 });

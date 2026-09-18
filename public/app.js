@@ -1677,10 +1677,17 @@ function handleCommentShortcut() {
 /**
  * Pure function mapping keyboard events to application actions.
  * @param {string} key
- * @param {string} targetTagName 
+ * @param {string} targetTagName
+ * @param {{ctrl?: boolean, meta?: boolean, alt?: boolean}} [modifiers]
  * @returns {string|null} Action to take, or null if ignored.
  */
-function getKeyboardShortcut(key, targetTagName) {
+function getKeyboardShortcut(key, targetTagName, modifiers = {}) {
+  if (modifiers.ctrl || modifiers.meta || modifiers.alt) return null;
+
+  // Escape means "never mind" everywhere — including inside inputs — so it
+  // must be checked before the typing guard.
+  if (key === 'Escape') return 'escape';
+
   if (targetTagName === 'INPUT' || targetTagName === 'TEXTAREA') {
     return null;
   }
@@ -1693,8 +1700,7 @@ function getKeyboardShortcut(key, targetTagName) {
     'n': 'nextComment',
     'p': 'prevComment',
     'c': 'commentFocus',
-    '?': 'help',
-    'Escape': 'escape'
+    '?': 'help'
   };
 
   return map[key] || null;
@@ -1713,7 +1719,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // Add keyboard navigation
   document.addEventListener('keydown', (e) => {
-    const action = getKeyboardShortcut(e.key, e.target.tagName);
+    const action = getKeyboardShortcut(e.key, e.target.tagName, { ctrl: e.ctrlKey, meta: e.metaKey, alt: e.altKey });
     if (!action || action === 'escape') return; // escape is handled separately
 
     if (action === 'prevFile') {
@@ -1745,7 +1751,7 @@ document.addEventListener('DOMContentLoaded', () => {
   // Escape, and a click on the dimmed area around it, both mean "never mind"
   // -- but only when there is a review behind the picker to go back to.
   document.addEventListener('keydown', event => {
-    if (getKeyboardShortcut(event.key, event.target.tagName) !== 'escape') {
+    if (getKeyboardShortcut(event.key, event.target.tagName, { ctrl: event.ctrlKey, meta: event.metaKey, alt: event.altKey }) !== 'escape') {
       return;
     }
 
